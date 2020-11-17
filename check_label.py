@@ -1,5 +1,4 @@
 import csv
-import csv
 import os
 from pathlib import Path
 from typing import Union, List, Optional, Iterator, Tuple
@@ -29,12 +28,16 @@ TEST_SUBJECTS = [2, 9, 11, 14, 18, 19, 28, 31, 41, 47]
 ALLOWED_LABELS = digits
 
 
-def get_label(filepath: str) -> Union[None, int]:
+def get_label(filepath: str, reduce_intvl: float = 1) -> Union[None, int]:
     """
     Check the label for a given image in the database
     :param filepath: Absolute filepath of an image
+    :param reduce_intvl: Inner share of the interval to be used
     :return: Label as int, None if no label assigned
     """
+    # Interval share to be clipped on each side
+    clip_intvl = 0.5 * (1 - reduce_intvl)
+
     # Convert to Path
     path = Path(filepath)
     parts = path.parts
@@ -53,16 +56,18 @@ def get_label(filepath: str) -> Union[None, int]:
             if all(len(i) > 0 for i in row):
                 label, min_frame, max_frame = [int(i) for i in row]
                 diff_frame = max_frame - min_frame
-                if min_frame + round(0.2 * diff_frame) <= frame <= max_frame - round(0.2 * diff_frame):
+                if min_frame + round(clip_intvl * diff_frame) <= frame <= max_frame - round(clip_intvl * diff_frame):
                     return label
     return None
 
 
-def get_images(allowed_labels: List[int], color: Optional[bool] = True) -> Iterator[Tuple[int, str]]:
+def get_images(allowed_labels: List[int], color: Optional[bool] = True, reduce_intvl: float = 1) \
+        -> Iterator[Tuple[int, str]]:
     """
     Construct a generator of image filepaths to be considered
     :param allowed_labels: Labels that should be processed, other image filepaths are not returned
     :param color: Flag to indicate whether RGB or depth images should be used
+    :param reduce_intvl:
     :return: Generator of filepaths for images matching the filters
     """
     for image_dir in IMAGE_PATHS:
@@ -74,7 +79,7 @@ def get_images(allowed_labels: List[int], color: Optional[bool] = True) -> Itera
 
             for file in files:
                 filepath = Path(root, file)
-                img_label = get_label(filepath)
+                img_label = get_label(filepath, reduce_intvl=reduce_intvl)
                 if img_label in allowed_labels:
                     yield img_label, str(filepath)
 
@@ -95,7 +100,7 @@ if __name__ == '__main__':
 
     # Load relevant images by RGB/Depth and label
     cnt = 0
-    for label, img_path_str in get_images(ALLOWED_LABELS, color=False):
+    for label, img_path_str in get_images(ALLOWED_LABELS, color=False, reduce_intvl=0.3):
         cnt += 1
         print(f'Processing image #{cnt}')
         # Preprocess each image with OpenCV
@@ -116,7 +121,7 @@ if __name__ == '__main__':
         label_dir.mkdir(exist_ok=True)
 
         # Save ROI of image into correct folder
-        destination_path = Path(label_dir, f'{cnt}.{img_path.suffix}')
+        destination_path = Path(label_dir, f'{cnt}{img_path.suffix}')
         cv2.imwrite(str(destination_path), img)
 
     # Deep Learning
