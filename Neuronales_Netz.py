@@ -1,39 +1,35 @@
 # import the necessary packages
-from tensorflow.keras.preprocessing.image import img_to_array
-from tensorflow.keras.utils import to_categorical
-from sklearn.preprocessing import LabelBinarizer
-from tensorflow.keras.applications import  NASNetMobile
-from tensorflow.keras.layers import Dense, Flatten, Dropout, AveragePooling2D, Input
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.models import Model
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.applications.nasnet import preprocess_input
-from tensorflow.keras.preprocessing import image
-import tensorflow as tf
-import numpy as np
-import matplotlib.pyplot as plt
-import cv2
 import os
 import zipfile
 from glob import glob
+
+import matplotlib.pyplot as plt
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.applications import NASNetMobile
+from tensorflow.keras.layers import Dense, Flatten, Dropout, AveragePooling2D, Input
+from tensorflow.keras.models import Model
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.preprocessing import image
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 r = []
 #################################################################
 tf.test.is_gpu_available()
 # Load Data
-#Check if folder exists
+# Check if folder exists
 # create data folder if not existing and extract data into it.
-if not os.path.exists("./data"):
-    os.makedirs("./data")
+if not os.path.exists("./ressource"):
+    os.makedirs("./ressource")
 
-if not os.path.exists("./data/Gesture"):
+if not os.path.exists("./ressource/"):
     zip_ref = zipfile.ZipFile("Gesture_img.zip", 'r')
     zip_ref.extractall("./data/")
     zip_ref.close()
 
-train_path = 'data/Gesture/Training'
-valid_path = 'data/Gesture/Validation'
-test_path =  'data/Gesture/Test'
+train_path = './ressource/Training'
+valid_path = './ressource/Validation'
+test_path = './ressource/Test'
 
 # useful for getting number of files
 image_files = glob(train_path + '/*/*.jp*g')
@@ -50,11 +46,10 @@ plt.show()
 #########################################################
 # Define Hyper parameters
 INIT_LR = 1e-4
-epochs = 30
-batch_size = 32
-Label_output = 10
+epochs = 3
+batch_size = 16
 # Define pre-build NASNet_Mobile Network or Mobilenet_V2
-IMAGE_Size = (224, 224, 3)
+IMAGE_Size = (224, 224)
 
 ##########################################################
 # Image generator
@@ -66,14 +61,14 @@ datagen = ImageDataGenerator(
     rotation_range=25,
     width_shift_range=0.2,
     height_shift_range=0.2,
-    horizontal_flip=True,
+    horizontal_flip=False,
     shear_range=0.15,
     zoom_range=0.25,
     fill_mode="nearest")
 ##########################################
 
 
-Pretrained_Model = NASNetMobile(input_tensor=Input(shape=IMAGE_Size), weights='imagenet', include_top=False)
+Pretrained_Model = NASNetMobile(input_tensor=Input(shape=IMAGE_Size + (3, )), weights='imagenet', include_top=False)
 ##########################################################
 
 # don't train existing weights
@@ -87,7 +82,7 @@ layer1 = Dense(128, activation="relu")(layer1)
 layer1 = Dropout(0.5)(layer1)
 layer1 = Dense(64, activation="relu")(layer1)
 layer1 = Dropout(0.5)(layer1)
-prediction = Dense(Label_output, activation="softmax")(layer1)
+prediction = Dense(len(folders), activation="softmax")(layer1)
 
 # create a model object
 model = Model(inputs=Pretrained_Model.input, outputs=prediction)
@@ -103,24 +98,24 @@ model.compile(
 #########################
 # Call Generators
 train_generator = datagen.flow_from_directory(
-  train_path,
-  target_size=IMAGE_Size,
-  shuffle=True,
-  batch_size=batch_size,
+    train_path,
+    target_size=IMAGE_Size,
+    shuffle=True,
+    batch_size=batch_size,
 )
 
 valid_generator = datagen.flow_from_directory(
-  valid_path,
-  target_size=IMAGE_Size,
-  shuffle=True,
-  batch_size=batch_size,
+    valid_path,
+    target_size=IMAGE_Size,
+    shuffle=True,
+    batch_size=batch_size,
 )
 
 test_generator = datagen.flow_from_directory(
-  valid_path,
-  target_size=IMAGE_Size,
-  shuffle=True,
-  batch_size=batch_size,
+    valid_path,
+    target_size=IMAGE_Size,
+    shuffle=True,
+    batch_size=batch_size,
 )
 # Print all Labels
 labels = [None] * len(train_generator.class_indices)
@@ -141,9 +136,9 @@ r = model.fit_generator(
     verbose=1
 )
 
-#saving the NASNet model
-    # saving the model
-    #save_dir = "/results/"
+# saving the NASNet model
+# saving the model
+# save_dir = "/results/"
 model_name = 'Model.h5'
 weights_name = 'weights.h5'
 model.save(model_name)
@@ -165,7 +160,6 @@ plt.plot(r.history['accuracy'], label='train accuracy')
 plt.plot(r.history['val_accuracy'], label='val accuracy')
 plt.legend()
 plt.show()
-
 
 ################################
 # # Perform Predictions on 5 Test Images
