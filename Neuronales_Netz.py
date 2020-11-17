@@ -41,13 +41,13 @@ folders = glob(train_path + '/*')
 
 # look at an image for fun
 plt.imshow(image.load_img(np.random.choice(image_files)))
-plt.show()
+# plt.show()
 
 #########################################################
 # Define Hyper parameters
 INIT_LR = 1e-4
-epochs = 3
-batch_size = 16
+epochs = 1
+batch_size = 64
 # Define pre-build NASNet_Mobile Network or Mobilenet_V2
 IMAGE_Size = (224, 224)
 
@@ -125,7 +125,7 @@ for k, v in train_generator.class_indices.items():
 print(labels)
 
 # Start Training
-
+NASNetMobile_callback = tf.keras.callbacks.ModelCheckpoint(filepath ="Mobilenet_Model_Checkpoint{epoch:04d}.ckpt",save_weights_only=True, verbose=1)
 # fit the model
 r = model.fit_generator(
     train_generator,
@@ -133,7 +133,8 @@ r = model.fit_generator(
     epochs=epochs,
     steps_per_epoch=len(image_files) // batch_size,
     validation_steps=len(valid_image_files) // batch_size,
-    verbose=1
+    verbose=1,
+    callbacks=NASNetMobile_callback
 )
 
 # saving the NASNet model
