@@ -6,9 +6,17 @@ import numpy as np
 from check_label import ROOT_PATH
 
 LMIN, LMAX = 0, 255
-AMIN, AMAX = 126, 182
-BMIN, BMAX = 128, 182
-MIN_AREA = 2000
+AMIN, AMAX = 131, 165
+BMIN, BMAX = 132, 178
+BLUR_SIZE = 3
+EROSION_SIZE = 9
+closing_size = 3
+
+
+def make_uneven(val):
+    val = max(3, val)
+    return val if val % 2 == 1 else val + 1
+
 
 if __name__ == '__main__':
     # Get a random image from the set of allowed labels
@@ -37,7 +45,8 @@ if __name__ == '__main__':
         cv2.createTrackbar('b_min', 'Trackbars', BMIN, 255, lambda x: x)
         cv2.createTrackbar('a_max', 'Trackbars', AMAX, 255, lambda x: x)
         cv2.createTrackbar('b_max', 'Trackbars', BMAX, 255, lambda x: x)
-        cv2.createTrackbar('erosion', 'Trackbars', 3, 30, lambda x: x)
+        cv2.createTrackbar('erosion', 'Trackbars', EROSION_SIZE, 30, lambda x: x)
+        cv2.createTrackbar('blur', 'Trackbars', BLUR_SIZE, 10, lambda x: x)
 
         while True:
             # Get trackbar values
@@ -45,9 +54,8 @@ if __name__ == '__main__':
             b_min = cv2.getTrackbarPos('b_min', 'Trackbars')
             a_max = cv2.getTrackbarPos('a_max', 'Trackbars')
             b_max = cv2.getTrackbarPos('b_max', 'Trackbars')
-            erosion_size = cv2.getTrackbarPos('erosion', 'Trackbars')
-            erosion_size = max(3, erosion_size)
-            erosion_size = erosion_size if erosion_size % 2 == 1 else erosion_size + 1
+            erosion_size = make_uneven(cv2.getTrackbarPos('erosion', 'Trackbars'))
+            blur_size = make_uneven(cv2.getTrackbarPos('blur', 'Trackbars'))
 
             # Mask the skin color
             skin_color_mask = cv2.inRange(lab, (LMIN, a_min, b_min), (LMAX, a_max, b_max))
@@ -56,26 +64,47 @@ if __name__ == '__main__':
             # Binarize the image
             ret, gray_binary = cv2.threshold(gray_masked, 1, 255, cv2.THRESH_BINARY)
             kernel = np.ones((erosion_size, erosion_size), np.uint8)
-            gray_binary = cv2.erode(gray_binary, kernel, iterations=1)
+            gray_binary = cv2.morphologyEx(gray_binary, cv2.MORPH_OPEN, kernel)
+            gray_binary = cv2.morphologyEx(gray_binary, cv2.MORPH_CLOSE, kernel)
+
+            # Blur the image before edge detection
+            gray_blurred = cv2.GaussianBlur(gray, (blur_size, blur_size), sigmaX=2)
+            v = np.median(gray)
+            sigma = 0.33
+            lower = int(max(0, (1.0 - sigma) * v))
+            upper = int(min(255, (1.0 + sigma) * v))
 
             # Detect edges in the grayscale image
-            gray_edges = cv2.Canny(gray_binary, 100, 200)
+            gray_edges = cv2.Canny(gray_blurred, lower, upper, apertureSize=3)
+            kernel = np.ones((closing_size, closing_size), np.uint8)
+            gray_edges = cv2.morphologyEx(gray_edges, cv2.MORPH_DILATE, kernel)
 
-            # Find contours
+            # Subtract the edges from the binary image
+            gray_edges_inv = cv2.bitwise_not(gray_edges)
+            gray_binary = cv2.bitwise_and(gray_binary, gray_edges_inv)
+
+            # Generate a copy of the original within the loop
+            img_box = np.copy(img_original)
+
+            # Find contours in gray image
             box_cnt = 0
             contours, hierarchy = cv2.findContours(gray_binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
             print(gray_binary.shape)
-            MAX_AREA = 0.7 * np.prod(gray_binary.shape[0:2])
+            TOTAL_AREA = np.prod(gray_binary.shape[0:2])
+            MAX_AREA = 0.7 * TOTAL_AREA
+            MIN_AREA = 0.03 * TOTAL_AREA
             print(f'Area of boxes must be within ({MIN_AREA},{MAX_AREA})')
-
+            print(f'Found {len(contours)} contours')
             if len(contours) > 1:
                 min_area_act = min(cv2.contourArea(cnt) for cnt in contours)
                 max_area_act = max(cv2.contourArea(cnt) for cnt in contours)
                 print(f'Minimum area found {min_area_act}, maximum area found {max_area_act}')
 
-            img_box = np.copy(img_original)
+            # Draw contours from binary image
+            cv2.drawContours(img_box, contours, -1, (255, 0, 0), 3)
             for cnt in contours:
                 area = cv2.contourArea(cnt)
+                # Draw bounding box if area of contour is sufficient
                 if MAX_AREA > area > MIN_AREA:
                     x, y, w, h = cv2.boundingRect(cnt)
                     cv2.rectangle(img_box, (x, y), (x + w, y + h), (0, 255, 0), thickness=2)
@@ -89,7 +118,8 @@ if __name__ == '__main__':
                 img_box
             ))
             res = np.vstack((row1, row2))
-            cv2.imshow('<Original | Original CLAHE | LAB CLAHE | Gray CLAHE> <Skin Masked | Binary | Edges | Boxes>', res)
+            cv2.imshow('<Original | Original CLAHE | LAB CLAHE | Gray CLAHE> <Skin Masked | Binary | Edges | Boxes>',
+                       res)
 
             k = cv2.waitKey(1) & 0xFF
             if k == 27:
