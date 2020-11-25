@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.applications import NASNetMobile
-from tensorflow.keras.layers import Dense, Flatten, Dropout, AveragePooling2D, Input
+from tensorflow.keras.layers import Dense, Flatten, Dropout, MaxPooling2D, Input
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing import image
@@ -46,7 +46,7 @@ plt.imshow(image.load_img(np.random.choice(image_files)))
 #########################################################
 # Define Hyper parameters
 INIT_LR = 1e-4
-epochs = 1
+epochs = 10
 batch_size = 64
 # Define pre-build NASNet_Mobile Network or Mobilenet_V2
 IMAGE_Size = (224, 224)
@@ -55,20 +55,27 @@ IMAGE_Size = (224, 224)
 # Image generator
 # image preprocessing and data augmentation during training
 
-datagen = ImageDataGenerator(
-    featurewise_center=True,
-    featurewise_std_normalization=True,
+datagen_train = ImageDataGenerator(
     rotation_range=25,
     width_shift_range=0.2,
     height_shift_range=0.2,
     horizontal_flip=False,
     shear_range=0.15,
     zoom_range=0.25,
+    rescale=1. / 255,
+    fill_mode="nearest")
+
+datagen_valid = ImageDataGenerator(
+    rescale=1. / 255,
+    fill_mode="nearest")
+
+datagen_test = ImageDataGenerator(
+    rescale=1. / 255,
     fill_mode="nearest")
 ##########################################
 
 
-Pretrained_Model = NASNetMobile(input_tensor=Input(shape=IMAGE_Size + (3, )), weights='imagenet', include_top=False)
+Pretrained_Model = NASNetMobile(input_tensor=Input(shape=IMAGE_Size + (3,)), weights='imagenet', include_top=False)
 ##########################################################
 
 # don't train existing weights
@@ -76,7 +83,7 @@ for layer in Pretrained_Model.layers:
     layer.trainable = False
 # our added layers - you can add more if you want
 layer1 = Pretrained_Model.output
-layer1 = AveragePooling2D(pool_size=(7, 7))(layer1)
+layer1 = MaxPooling2D(pool_size=(7, 7))(layer1)
 layer1 = Flatten(name="flatten")(layer1)
 layer1 = Dense(128, activation="relu")(layer1)
 layer1 = Dropout(0.5)(layer1)
@@ -91,27 +98,25 @@ model = Model(inputs=Pretrained_Model.input, outputs=prediction)
 model.summary()
 # tell the model what cost and optimization method to use
 opt = Adam(lr=INIT_LR, decay=INIT_LR / epochs)
-model.compile(
-    loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy']
-)
+model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
 
 #########################
 # Call Generators
-train_generator = datagen.flow_from_directory(
+train_generator = datagen_train.flow_from_directory(
     train_path,
     target_size=IMAGE_Size,
     shuffle=True,
     batch_size=batch_size,
 )
 
-valid_generator = datagen.flow_from_directory(
+validation_generator = datagen_valid.flow_from_directory(
     valid_path,
     target_size=IMAGE_Size,
     shuffle=True,
     batch_size=batch_size,
 )
 
-test_generator = datagen.flow_from_directory(
+test_generator = datagen_test.flow_from_directory(
     valid_path,
     target_size=IMAGE_Size,
     shuffle=True,
@@ -125,16 +130,19 @@ for k, v in train_generator.class_indices.items():
 print(labels)
 
 # Start Training
-NASNetMobile_callback = tf.keras.callbacks.ModelCheckpoint(filepath ="Mobilenet_Model_Checkpoint{epoch:04d}.ckpt",save_weights_only=True, verbose=1)
-# fit the model
-r = model.fit_generator(
-    train_generator,
-    validation_data=valid_generator,
+NASNetMobile_callback = tf.keras.callbacks.ModelCheckpoint(filepath="Mobilenet_Model_Checkpoint{epoch:04d}.ckpt",
+                                                           save_weights_only=True, verbose=1)
+
+r = model.fit(
+    x=train_generator,
+    validation_data=validation_generator,
     epochs=epochs,
+    batch_size=batch_size,
     steps_per_epoch=len(image_files) // batch_size,
     validation_steps=len(valid_image_files) // batch_size,
     verbose=1,
-    callbacks=NASNetMobile_callback
+    callbacks=NASNetMobile_callback,
+    use_multiprocessing=False
 )
 
 # saving the NASNet model
