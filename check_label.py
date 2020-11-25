@@ -87,16 +87,13 @@ def get_images(allowed_labels: List[int], color: Optional[bool] = True, reduce_i
 
 if __name__ == '__main__':
     # Create folder structure for deep learning
-    DL_ROOT_PATH = Path(DL_PARENT_PATH, 'DL')
-    DL_ROOT_PATH.mkdir(exist_ok=True)
-
-    training_dir = Path(DL_ROOT_PATH, 'Training')
+    training_dir = Path(DL_PARENT_PATH, 'Training')
     training_dir.mkdir(exist_ok=True)
 
-    validation_dir = Path(DL_ROOT_PATH, 'Validation')
+    validation_dir = Path(DL_PARENT_PATH, 'Validation')
     validation_dir.mkdir(exist_ok=True)
 
-    test_dir = Path(DL_ROOT_PATH, 'Test')
+    test_dir = Path(DL_PARENT_PATH, 'Test')
     test_dir.mkdir(exist_ok=True)
 
     # Load relevant images by RGB/Depth and label
