@@ -161,13 +161,10 @@ print('Saved weights at %s ' % weights_name)
 # loss
 plt.plot(r.history['loss'], label='train loss')
 plt.plot(r.history['val_loss'], label='val loss')
-plt.legend()
-plt.show()
-
-# accuracies
 plt.plot(r.history['accuracy'], label='train accuracy')
 plt.plot(r.history['val_accuracy'], label='val accuracy')
 plt.legend()
+plt.grid()
 plt.show()
 
 ################################
