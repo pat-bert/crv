@@ -7,8 +7,9 @@ import cv2
 
 ROOT_PATH = Path(r'D:\Nutzer\Videos\CRV')
 IMAGE_PATHS = [Path(ROOT_PATH, f'images_320-240_{i}') for i in range(1, 6)]
-LABELS_ROOT_PATH = Path(ROOT_PATH, 'labels-final-revised1')
-DL_PARENT_PATH = Path(r'D:\Nutzer\Videos')
+CURRENT_DIR = Path('.').absolute()
+LABELS_ROOT_PATH = Path(CURRENT_DIR, 'labels-final-revised1')
+DL_PARENT_PATH = Path(CURRENT_DIR, 'ressource')
 
 # Labels grouped by topic
 scroll_hand = [i for i in range(1, 7)]
@@ -17,7 +18,7 @@ rotate_fists = [10, 11]
 zoom_fingers = [12, 13]
 rotate_fingers = [14, 15]
 sweep = [i for i in range(17, 21)]
-digits = [i for i in range(24, 34)] + [35]
+digits = [i for i in range(24, 34)]
 
 # Subjects grouped by category
 TRAINING_SUBJECTS = [3, 4, 5, 6, 8, 10, 15, 16, 17, 20, 21, 22, 23, 25, 26, 27, 30, 32, 36, 38, 39, 40, 42, 43, 44, 45,
@@ -110,6 +111,9 @@ if __name__ == '__main__':
         # Determine category
         subject_part = [part for part in img_path.parts if part.startswith('Subject')]
         subject_number = int(subject_part[0].split('Subject')[-1])
+        scene_part = [part for part in img_path.parts if part.startswith('Scene')]
+        scene_number = int(scene_part[0].split('Scene')[-1])
+        type_part = img_path.parts[-2]
 
         # Create folder for label
         if subject_number in TRAINING_SUBJECTS:
@@ -121,7 +125,7 @@ if __name__ == '__main__':
         label_dir.mkdir(exist_ok=True)
 
         # Save ROI of image into correct folder
-        destination_path = Path(label_dir, f'{cnt}{img_path.suffix}')
+        destination_path = Path(label_dir, f'Subject{subject_number}_Scene{scene_number}_{type_part}_{img_path.name}')
         cv2.imwrite(str(destination_path), img)
 
     # Deep Learning

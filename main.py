@@ -80,7 +80,7 @@ def get_area_thresholds(image):
     return MIN_AREA_REL * total_area, MAX_AREA_REL * total_area
 
 
-def do_nothing():
+def do_nothing(_):
     pass
 
 
@@ -99,6 +99,7 @@ if __name__ == '__main__':
         cv2.createTrackbar('Min Beta', 'Trackbars', BMIN, 255, do_nothing)
         cv2.createTrackbar('Max Alpha', 'Trackbars', AMAX, 255, do_nothing)
         cv2.createTrackbar('Max Beta', 'Trackbars', BMAX, 255, do_nothing)
+        cv2.createTrackbar('SLIC Thresh', 'Trackbars', 30, 255, do_nothing)
 
         # Enhance the contrast
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
@@ -115,6 +116,7 @@ if __name__ == '__main__':
             b_min = cv2.getTrackbarPos('Min Beta', 'Trackbars')
             a_max = cv2.getTrackbarPos('Max Alpha', 'Trackbars')
             b_max = cv2.getTrackbarPos('Max Beta', 'Trackbars')
+            slic_thresh = cv2.getTrackbarPos('SLIC Thresh', 'Trackbars')
 
             # Mask the skin color
             skin_color_mask = cv2.inRange(lab, (LMIN, a_min, b_min), (LMAX, a_max, b_max))
@@ -129,7 +131,7 @@ if __name__ == '__main__':
             # Graph merging
             img_rgb_masked = cv2.bitwise_and(img_rgb, img_rgb, mask=skin_color_mask)
             g = graph.rag_mean_color(img_rgb_masked, labels)
-            labels2 = graph.merge_hierarchical(labels, g, thresh=30, rag_copy=False, in_place_merge=True,
+            labels2 = graph.merge_hierarchical(labels, g, thresh=slic_thresh, rag_copy=False, in_place_merge=True,
                                                merge_func=merge_mean_color, weight_func=_weight_mean_color)
             out = color.label2rgb(labels2, img_rgb_masked, kind='avg', bg_label=0)
             out = img_as_ubyte(mark_boundaries(out, labels2, (0, 0, 0)))
