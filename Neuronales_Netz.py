@@ -99,6 +99,7 @@ model.summary()
 # tell the model what cost and optimization method to use
 opt = Adam(lr=INIT_LR, decay=INIT_LR / epochs)
 model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
+model.load_weights('./output/weights.h5')
 
 #########################
 # Call Generators
@@ -159,11 +160,19 @@ print('Saved weights at %s ' % weights_name)
 # plot some data
 
 # loss
+plt.figure()
 plt.plot(r.history['loss'], label='train loss')
 plt.plot(r.history['val_loss'], label='val loss')
+plt.legend()
+plt.ylim(bottom=0.0)
+plt.grid()
+plt.show()
+
+plt.figure()
 plt.plot(r.history['accuracy'], label='train accuracy')
 plt.plot(r.history['val_accuracy'], label='val accuracy')
 plt.legend()
+plt.ylim((0.0, 1.0))
 plt.grid()
 plt.show()
 
