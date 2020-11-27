@@ -32,6 +32,8 @@ def capture_webcam ():
         if ret is False:
             rgb_frame = np.zeros((width, height, 3), np.uint8)
     else:
+        width = 224
+        height = 224
         rgb_frame = np.zeros((width, height, 3), np.uint8)
 
     gray_frame = cv2.cvtColor(rgb_frame, cv2.COLOR_BGR2GRAY)

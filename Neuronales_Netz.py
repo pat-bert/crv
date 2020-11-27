@@ -118,7 +118,7 @@ validation_generator = datagen_valid.flow_from_directory(
 )
 
 test_generator = datagen_test.flow_from_directory(
-    valid_path,
+    test_path,
     target_size=IMAGE_Size,
     shuffle=True,
     batch_size=batch_size,
