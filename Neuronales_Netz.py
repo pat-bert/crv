@@ -13,6 +13,9 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
+from dl_bot import DLBot
+from telegram_bot_callback import TelegramBotCallback
+
 r = []
 #################################################################
 tf.test.is_gpu_available()
@@ -27,9 +30,9 @@ if not os.path.exists("./ressource/"):
     zip_ref.extractall("./data/")
     zip_ref.close()
 
-train_path = './ressource/Training'
-valid_path = './ressource/Validation'
-test_path = './ressource/Test'
+train_path = './ressource_rgb/Training'
+valid_path = './ressource_rgb/Validation'
+test_path = './ressource_rgb/Test'
 
 # useful for getting number of files
 image_files = glob(train_path + '/*/*.jp*g')
@@ -46,7 +49,7 @@ plt.imshow(image.load_img(np.random.choice(image_files)))
 #########################################################
 # Define Hyper parameters
 INIT_LR = 1e-4
-epochs = 10
+epochs = 50
 batch_size = 64
 # Define pre-build NASNet_Mobile Network or Mobilenet_V2
 IMAGE_Size = (224, 224)
@@ -99,7 +102,7 @@ model.summary()
 # tell the model what cost and optimization method to use
 opt = Adam(lr=INIT_LR, decay=INIT_LR / epochs)
 model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
-model.load_weights('./output/weights.h5')
+# model.load_weights('./output/weights.h5')
 
 #########################
 # Call Generators
@@ -133,6 +136,22 @@ print(labels)
 # Start Training
 NASNetMobile_callback = tf.keras.callbacks.ModelCheckpoint(filepath="Mobilenet_Model_Checkpoint{epoch:04d}.ckpt",
                                                            save_weights_only=True, verbose=1)
+callbacks = [NASNetMobile_callback]
+
+if os.path.exists("./bottoken.txt"):
+    with open("./bottoken.txt", "r") as f:
+        line = f.readline()
+
+    telegram_token = line.strip()  # replace TOKEN with your bot's token
+
+    #  user id is optional, however highly recommended as it limits the access to you alone.
+    telegram_user_id = None  # replace None with your telegram user id (integer):
+
+    # Create a DLBot instance
+    bot = DLBot(token=telegram_token, user_id=telegram_user_id)
+    # Create a TelegramBotCallback instance
+    telegram_callback = TelegramBotCallback(bot)
+    callbacks.append(telegram_callback)
 
 r = model.fit(
     x=train_generator,
@@ -142,7 +161,7 @@ r = model.fit(
     steps_per_epoch=len(image_files) // batch_size,
     validation_steps=len(valid_image_files) // batch_size,
     verbose=1,
-    callbacks=NASNetMobile_callback,
+    callbacks=callbacks,
     use_multiprocessing=False
 )
 
