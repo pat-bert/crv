@@ -92,7 +92,7 @@ layer1 = Dense(128, activation="relu")(layer1)
 layer1 = Dropout(0.5)(layer1)
 layer1 = Dense(64, activation="relu")(layer1)
 layer1 = Dropout(0.5)(layer1)
-prediction = Dense(len(folders), activation="softmax")(layer1)
+prediction = Dense(len(folders), activation="sigmoid")(layer1)
 
 # create a model object
 model = Model(inputs=Pretrained_Model.input, outputs=prediction)
