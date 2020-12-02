@@ -12,9 +12,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-
-from dl_bot import DLBot
-from telegram_bot_callback import TelegramBotCallback
+from tensorflow.keras.applications.nasnet import preprocess_input
 
 r = []
 #################################################################
@@ -48,7 +46,7 @@ plt.imshow(image.load_img(np.random.choice(image_files)))
 
 #########################################################
 # Define Hyper parameters
-INIT_LR = 1e-4
+INIT_LR = 1e-3
 epochs = 50
 batch_size = 64
 # Define pre-build NASNet_Mobile Network or Mobilenet_V2
@@ -65,25 +63,27 @@ datagen_train = ImageDataGenerator(
     horizontal_flip=False,
     shear_range=0.15,
     zoom_range=0.25,
-    rescale=1. / 255,
-    fill_mode="nearest")
+    # rescale=1. / 255,
+    fill_mode="nearest",
+    preprocessing_function=preprocess_input)
 
 datagen_valid = ImageDataGenerator(
-    rescale=1. / 255,
-    fill_mode="nearest")
+    #rescale=1. / 255,
+    fill_mode="nearest",
+    preprocessing_function=preprocess_input)
 
 datagen_test = ImageDataGenerator(
-    rescale=1. / 255,
-    fill_mode="nearest")
+    #rescale=1. / 255,
+    fill_mode="nearest",
+    preprocessing_function=preprocess_input)
 ##########################################
 
 
 Pretrained_Model = NASNetMobile(input_tensor=Input(shape=IMAGE_Size + (3,)), weights='imagenet', include_top=False)
 ##########################################################
-
 # don't train existing weights
-for layer in Pretrained_Model.layers:
-    layer.trainable = False
+Pretrained_Model.trainable = False
+
 # our added layers - you can add more if you want
 layer1 = Pretrained_Model.output
 layer1 = MaxPooling2D(pool_size=(7, 7))(layer1)
@@ -137,21 +137,6 @@ print(labels)
 NASNetMobile_callback = tf.keras.callbacks.ModelCheckpoint(filepath="Mobilenet_Model_Checkpoint{epoch:04d}.ckpt",
                                                            save_weights_only=True, verbose=1)
 callbacks = [NASNetMobile_callback]
-
-if os.path.exists("./bottoken.txt"):
-    with open("./bottoken.txt", "r") as f:
-        line = f.readline()
-
-    telegram_token = line.strip()  # replace TOKEN with your bot's token
-
-    #  user id is optional, however highly recommended as it limits the access to you alone.
-    telegram_user_id = None  # replace None with your telegram user id (integer):
-
-    # Create a DLBot instance
-    bot = DLBot(token=telegram_token, user_id=telegram_user_id)
-    # Create a TelegramBotCallback instance
-    telegram_callback = TelegramBotCallback(bot)
-    callbacks.append(telegram_callback)
 
 r = model.fit(
     x=train_generator,
