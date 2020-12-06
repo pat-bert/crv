@@ -8,14 +8,12 @@ import numpy as np
 from skimage import segmentation
 from skimage.measure import regionprops
 
-# noinspection PyProtectedMember
-
 # LAB color quantization levels
-N_QUANT = 14
+N_QUANT = 18
 # Number of target superpixels for SLIC
-N_SLIC = 150
+N_SLIC = 120
 
-DEBUG = False
+DEBUG = True
 
 
 def debug_image(title, img):
@@ -23,47 +21,30 @@ def debug_image(title, img):
         cv2.imshow(title, img)
 
 
-def calc_skin_prob(img):
+def skin_probability(img):
     # TODO Calculate skin probability
     prob = np.logical_and.reduce((124 <= img[:, :, 1], img[:, :, 1] <= 165, 126 <= img[:, :, 1], img[:, :, 1] <= 214))
     prob = prob.astype(dtype=np.float)
     return prob
 
 
-def calc_spatial_distance(reg1: int, reg2: int, shape, centroids) -> float:
-    """
-    Calculates the spatial distance between two superpixels specified by their labels
-    :param shape:
-    :param reg1: Label of the first superpixel
-    :param reg2: Label of the second superpixel
-    :param centroids: Properties of the superpixels
-    :return:
-    """
-    x1, y1 = centroids[reg1 - 1]
-    x2, y2 = centroids[reg2 - 1]
+def all_spatial_distances(labels, centroids, shape):
+    unique_labels = np.unique(labels)
+    max_label = len(unique_labels)
+    distances = defaultdict(lambda: dict())
     x_max, y_max = shape[0:2]
-    spatial_distance = hypot((x1 - x2) / x_max, (y1 - y2) / y_max)
-    return spatial_distance
+
+    for i in range(1, max_label + 1):
+        for j in range(i + 1, max_label + 1):
+            x1, y1 = centroids[i - 1]
+            x2, y2 = centroids[j - 1]
+            d_s = hypot((x1 - x2) / x_max, (y1 - y2) / y_max)
+            distances[i][j] = d_s
+
+    return distances
 
 
-def calc_skin_probability_distance(labels, x: int, y: int, p_skin, areas):
-    """
-    Skin probability distance between region x and region y defined as:
-    D_C = SUM(skin probability of all pixels of region x)/(Number of Pixels in region x)
-        - SUM(skin probability of all pixels of region y)/(Number of Pixels in region y)
-    :param labels:
-    :param x:
-    :param y:
-    :param p_skin:
-    :param areas:
-    :return:
-    """
-    # Calculate the skin color probability distance as difference of the normalized probabilities
-    skin_prop_distance = np.sum(p_skin[labels == x]) / areas[x - 1] - np.sum(p_skin[labels == y]) / areas[y - 1]
-    return skin_prop_distance
-
-
-def calc_region_saliency(p_skin, labels, centroids, areas, sigma: Optional[float] = 0.7):
+def region_saliency(p_skin, labels, distances, areas, sigma: Optional[float] = 0.7):
     """
     Calculate x region-level saliency for an image segmented into superpixels
 
@@ -74,10 +55,14 @@ def calc_region_saliency(p_skin, labels, centroids, areas, sigma: Optional[float
         D_S     "Spatial distance of region centroids"
         sigma   "Strength of spatial distance weighting"
 
+    Skin probability distance between region x and region y defined as:
+    D_C = SUM(skin probability of all pixels of region x)/(Number of Pixels in region x)
+        - SUM(skin probability of all pixels of region y)/(Number of Pixels in region y)
+
     Consequently, the saliency of the most aggregate and skin-like regions is enhanced.
     :param p_skin: Skin color probability for each image
     :param labels: Labels specifying superpixel affiliation for individual pixels in image
-    :param centroids:
+    :param distances:
     :param areas:
     :param sigma: Strength of spatial distance weighting
     :return:
@@ -92,18 +77,18 @@ def calc_region_saliency(p_skin, labels, centroids, areas, sigma: Optional[float
     unique_labels = np.unique(labels)
     for x in unique_labels:
         curr_sal = 0
+        d_c_x = np.sum(p_skin[labels == x]) / areas[x - 1]
         for y in unique_labels:
             # Compare current superpixel with all other superpixels
             if x != y:
                 # Calculate spatial distance between self and other superpixel's centroid
-                d_s = calc_spatial_distance(x, y, labels.shape, centroids)
+                d_s = distances[min(x, y)][max(x, y)]
 
                 # Calculate the skin color probability distance between the superpixels
-                y_area = areas[y - 1]
-                d_c = calc_skin_probability_distance(labels, x, y, p_skin, areas)
+                d_c = d_c_x - np.sum(p_skin[labels == y]) / areas[y - 1]
 
                 # Update saliency for current superpixel (minus is not in Article, probably an error)
-                curr_sal += y_area * d_c * exp(-d_s / sigma)
+                curr_sal += areas[y - 1] * d_c * exp(-d_s / sigma)
 
         # Set saliency for current superpixel
         saliency[labels == x] = curr_sal
@@ -134,7 +119,7 @@ def region_color_hist(img, labels):
     return total_occurences, region_occurences
 
 
-def color_entropy(img, total_occurences, region_occurences, centroids):
+def color_entropy(total_occurences, region_occurences, distances):
     """
     Calculate the color based entropy defined as:
         FOR COLOR i
@@ -147,10 +132,9 @@ def color_entropy(img, total_occurences, region_occurences, centroids):
         p_ik    "Ratio of pixels with color i between in region k and whole image"
         D_s     "Spatial distance of region centroids"
 
-    :param img:
     :param total_occurences: Dictionary of occurences of a specific color combination
     :param region_occurences: Dictionary of occurences of a specific color combination by regions
-    :param centroids: Properties of the superpixels
+    :param distances: Properties of the superpixels
     :return:
     """
     entropy = defaultdict(lambda: 0)
@@ -161,13 +145,14 @@ def color_entropy(img, total_occurences, region_occurences, centroids):
             # Skip regions without contribution
             if region_occurences[j][color] == 0:
                 continue
-            sum_others = 0
+
             # Iterate over all other regions
+            sum_others = 0
             for k in region_occurences.keys():
                 # Skip equal regions
                 if j != k:
                     # Calculate spatial distance between the regions
-                    d_s = calc_spatial_distance(j, k, img.shape, centroids)
+                    d_s = distances[min(j, k)][max(j, k)]
                     # Ratio of color occurence in region and total image
                     p_ik = region_occurences[k][color] / total_occurences[color]
                     sum_others += d_s * p_ik
@@ -180,7 +165,7 @@ def color_entropy(img, total_occurences, region_occurences, centroids):
     return entropy
 
 
-def calc_pixel_saliency(img, p_skin, labels, centroids, sigma: Optional[float] = 0.3):
+def pixel_saliency(img, p_skin, labels, distances, sigma: Optional[float] = 0.3):
     """
     Calculate x region-level saliency for an image segmented into superpixels
     Idea:
@@ -189,7 +174,7 @@ def calc_pixel_saliency(img, p_skin, labels, centroids, sigma: Optional[float] =
     :param img:
     :param p_skin: Skin color probability for each image
     :param labels: Labels specifying superpixel affiliation for individual pixels in image
-    :param centroids:
+    :param distances:
     :param sigma:
     :return:
     """
@@ -200,7 +185,7 @@ def calc_pixel_saliency(img, p_skin, labels, centroids, sigma: Optional[float] =
     total_occurences, region_occurences = region_color_hist(img, labels)
 
     # Calculate entropy for each three-value color combination
-    entropy_by_color = color_entropy(img, total_occurences, region_occurences, centroids)
+    entropy_by_color = color_entropy(total_occurences, region_occurences, distances)
 
     # Assign the pixel based entropy for each pixel
     x_max, y_max = img.shape[0:2]
@@ -266,16 +251,17 @@ if __name__ == '__main__':
     regions = regionprops(segments)
     region_centroids = tuple(i.centroid for i in regions)
     region_areas = tuple(i.area for i in regions)
+    all_distances = all_spatial_distances(segments, region_centroids, lab.shape)
 
     # Calculate skin color probability for each pixel of the image
-    prob_skin = calc_skin_prob(lab)
+    prob_skin = skin_probability(lab)
 
     # Step 2: Compute pixel-level saliency map
-    m_e = calc_pixel_saliency(lab, prob_skin, segments, region_centroids)
+    m_e = pixel_saliency(lab, prob_skin, segments, all_distances)
     debug_image('Pixel-based Saliency M_e', m_e)
 
     # Step 3: Compute region-level saliency map
-    m_c = calc_region_saliency(prob_skin, segments, region_centroids, region_areas)
+    m_c = region_saliency(prob_skin, segments, all_distances, region_areas)
     debug_image('Region-based Saliency M_c', m_c)
 
     # Step 4: Fuse the confidence maps and binarize using Otsu method
