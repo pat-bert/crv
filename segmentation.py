@@ -22,8 +22,8 @@ def debug_image(title, img):
 
 
 def skin_probability(img):
-    # TODO Calculate skin probability
-    prob = np.logical_and.reduce((124 <= img[:, :, 1], img[:, :, 1] <= 165, 126 <= img[:, :, 1], img[:, :, 1] <= 214))
+    # TODO Calculate skin probability using a LUT
+    prob = np.logical_and.reduce((122 <= img[:, :, 1], img[:, :, 1] <= 165, 122 <= img[:, :, 1], img[:, :, 1] <= 210))
     prob = prob.astype(dtype=np.float)
     return prob
 
@@ -98,7 +98,7 @@ def region_saliency(p_skin, labels, distances, areas, sigma: Optional[float] = 0
     return saliency.astype(dtype=np.uint8)
 
 
-def region_color_hist(img, labels):
+def region_color_hist(img, labels=None):
     """
     Count the pixels for each color combination in the whole image and in the individual regions
     :param img: The image to be used for color counting
@@ -106,15 +106,22 @@ def region_color_hist(img, labels):
     :return:
     """
     total_occurences = defaultdict(lambda: 0)
-    region_occurences = defaultdict(lambda: defaultdict(lambda: 0))
 
     x_max, y_max = img.shape[0:2]
-    for x in range(0, x_max):
-        for y in range(0, y_max):
-            color = tuple(img[x, y])
-            label = labels[x, y]
-            total_occurences[color] += 1
-            region_occurences[label][color] += 1
+    if labels is not None:
+        region_occurences = defaultdict(lambda: defaultdict(lambda: 0))
+        for x in range(0, x_max):
+            for y in range(0, y_max):
+                color = tuple(img[x, y])
+                label = labels[x, y]
+                total_occurences[color] += 1
+                region_occurences[label][color] += 1
+    else:
+        region_occurences = None
+        for x in range(0, x_max):
+            for y in range(0, y_max):
+                color = tuple(img[x, y])
+                total_occurences[color] += 1
 
     return total_occurences, region_occurences
 
@@ -268,26 +275,45 @@ if __name__ == '__main__':
     # m_coarse = fuse_saliency_maps(m_e, m_c)
     m_coarse = m_e
     m_coarse = cv2.GaussianBlur(m_coarse, (5, 5), 0)
-    _, thresh = cv2.threshold(m_coarse, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    _, thresh_coarse = cv2.threshold(m_coarse, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     debug_image('Coarse Saliency', m_coarse)
-    debug_image('Coarse mask', thresh)
+    debug_image('Coarse mask', thresh_coarse)
+    mask = cv2.inRange(thresh_coarse, 1, 255)
+    coarse_foreground = cv2.bitwise_and(lab, lab, mask=mask)
+    coarse_background = cv2.bitwise_and(lab, lab, mask=255 - mask)
 
     # Step 5: Calculate observation likelihood probability
-    mask = cv2.inRange(thresh, 1, 255)
-    foreground = cv2.bitwise_and(lab, lab, mask=mask)
-    background = cv2.bitwise_and(lab, lab, mask=255 - mask)
-    debug_image('Foreground', foreground)
-    debug_image('Background', background)
-    # TODO Calculate observation likelihood probability
-    p_v_fg = np.prod([1])
-    p_v_bg = np.prod([1])
+    total_occurances_fg, _ = region_color_hist(coarse_foreground)
+    total_occurances_bg, _ = region_color_hist(coarse_background)
+    n_fg = np.count_nonzero(coarse_foreground)
+    n_bg = np.count_nonzero(coarse_background)
+    p_v_fg = np.zeros(lab.shape[0:2])
+    p_v_bg = np.zeros(lab.shape[0:2])
+
+    x_max, y_max = lab.shape[0:2]
+    for x in range(0, x_max):
+        for y in range(0, y_max):
+            color = tuple(lab[x, y])
+            p_v_fg[x, y] = total_occurances_fg[color] / n_fg
+            p_v_bg[x, y] = total_occurances_bg[color] / n_bg
 
     # Step 6: Bayesian framework to obtain fine confidence map and binarize using Otsu method
-    m_fine = (np.multiply(m_coarse, p_v_fg)) / (np.multiply(m_coarse, p_v_fg) + np.multiply(1 - m_coarse, p_v_bg))
+    m_fine = np.divide(np.multiply(m_coarse, p_v_fg), np.multiply(m_coarse, p_v_fg) + np.multiply(1 - m_coarse, p_v_bg))
     m_fine = m_fine.astype(dtype=np.uint8)
     m_fine = cv2.GaussianBlur(m_fine, (5, 5), 0)
-    _, m_fine = cv2.threshold(m_fine, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    debug_image('MFINE', m_coarse)
+    _, thresh_fine = cv2.threshold(m_fine, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    debug_image('MFINE', m_fine)
+
+    # Final touches to the mask
+    thresh_fine = cv2.morphologyEx(thresh_fine, cv2.MORPH_OPEN, (5, 5))
+    thresh_fine = cv2.morphologyEx(thresh_fine, cv2.MORPH_CLOSE, (7, 7))
+    thresh_fine = cv2.dilate(thresh_fine, (5, 5))
+    mask = cv2.inRange(thresh_fine, 1, 255)
+    fine_foreground = cv2.bitwise_and(image, image, mask=mask)
+    fine_background = cv2.bitwise_and(image, image, mask=255 - mask)
+
+    debug_image('Foreground', fine_foreground)
+    debug_image('Background', fine_background)
 
     cv2.waitKey(0)
     cv2.destroyAllWindows()
