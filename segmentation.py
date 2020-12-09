@@ -1,4 +1,4 @@
-import multiprocessing as mp
+import os
 from collections import defaultdict
 from glob import glob
 from math import hypot, exp, log
@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 from skimage import segmentation
 from skimage.measure import regionprops
+from p_tqdm import p_map
 
 # Algorithm parameters
 N_QUANT = 14  # LAB color quantization levels
@@ -28,6 +29,7 @@ def skin_probability(img):
     b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
     # prob = np.logical_and.reduce((118 <= img[:, :, 1], img[:, :, 1] <= 165, 118 <= img[:, :, 2], img[:, :, 2] <= 210))
     denominator = np.square(r + g + b)
+    np.seterr(divide='ignore', invalid='ignore')
     prob = np.logical_and.reduce((
         np.divide(r, g) > 1.130,
         np.divide(np.multiply(r, b), denominator) > 0.107,
@@ -43,7 +45,7 @@ def skin_probability(img):
 
 def all_spatial_distances(labels, centroids, shape):
     unique_labels = np.unique(labels)
-    max_label = len(unique_labels)
+    max_label = np.amax(unique_labels)
     distances = defaultdict(lambda: dict())
     x_max, y_max = shape[0:2]
 
@@ -88,10 +90,11 @@ def region_saliency(p_skin, labels, distances, areas, sigma: Optional[float] = 0
 
     # Find unique superpixel labels and iterate over each label
     unique_labels = np.unique(labels)
-    for x in unique_labels:
+    max_label = np.amax(unique_labels)
+    for x in range(1, max_label):
         curr_sal = 0
         d_c_x = np.sum(p_skin[labels == x]) / areas[x - 1]
-        for y in unique_labels:
+        for y in range(1, max_label):
             # Compare current superpixel with all other superpixels
             if x != y:
                 # Calculate spatial distance between self and other superpixel's centroid
@@ -127,6 +130,8 @@ def region_color_hist(img, labels=None):
             for y in range(0, y_max):
                 color = tuple(img[x, y])
                 label = labels[x, y]
+                if label == 0:
+                    continue
                 total_occurences[color] += 1
                 region_occurences[label][color] += 1
     else:
@@ -268,10 +273,16 @@ def likelihood_probability(lab, foreground, background):
     return p_v_fg, p_v_bg
 
 
-def preprocess(image_path):
-    print(f'Using image: {image_path}')
+def preprocess(image_path, overwrite=False):
+    if DEBUG:
+        print(f'Using image: {image_path}')
     image = cv2.imread(image_path)
     debug_image('Image', image)
+    new_filepath = Path(image_path.replace('ressource_rgb', 'ressource_slic'))
+    new_filepath.parent.mkdir(parents=True, exist_ok=True)
+
+    if os.path.exists(str(new_filepath)) and not overwrite:
+        return
 
     # Transform to other color spaces
     lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
@@ -338,14 +349,10 @@ def preprocess(image_path):
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
-    new_filepath = Path(image_path.replace('ressource_rgb', 'ressource_slic'))
-    new_filepath.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(new_filepath), fine_foreground)
 
 
 if __name__ == '__main__':
     # Get all image file paths in one of the source folders
     image_files = glob(r'D:\Nutzer\Documents\PycharmProjects\crv\ressource_rgb\*\*\*.jp*g')
-
-    pool = mp.Pool()
-    pool.map(preprocess, image_files)
+    p_map(preprocess, image_files)
