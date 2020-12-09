@@ -31,10 +31,10 @@ def capture_webcam ():
 
 label = '33'
 path = './images/'
-i = 0
-cnt = 0
+i = 199
+cnt = 199
 
-for i in range(1, 100):
+for i in range(200, 400):
     data = capture_webcam()
     cnt = str(i)
     rgb = os.path.join(path + '/rgb/' + label)
@@ -50,7 +50,7 @@ time.sleep(5)
 
 i = 100
 
-for i in range(100, 200):
+for i in range(400, 600):
     data = capture_webcam()
     cnt = str(i)
     rgb = os.path.join(path + '/rgb/' + label)
