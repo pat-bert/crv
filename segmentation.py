@@ -8,10 +8,12 @@ import numpy as np
 from skimage import segmentation
 from skimage.measure import regionprops
 
-# LAB color quantization levels
-N_QUANT = 18
-# Number of target superpixels for SLIC
-N_SLIC = 120
+
+# Algorithm parameters
+N_QUANT = 14                # LAB color quantization levels
+N_SLIC = 120                # Number of target superpixels for SLIC
+FINAL_OPENING_SIZE = 7     # Opening of the final mask
+FINAL_CLOSING_SIZE = 11      # Closing of the final mask
 
 DEBUG = True
 
@@ -22,8 +24,18 @@ def debug_image(title, img):
 
 
 def skin_probability(img):
-    # TODO Calculate skin probability using a LUT
-    prob = np.logical_and.reduce((122 <= img[:, :, 1], img[:, :, 1] <= 165, 122 <= img[:, :, 1], img[:, :, 1] <= 210))
+    b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+    # prob = np.logical_and.reduce((118 <= img[:, :, 1], img[:, :, 1] <= 165, 118 <= img[:, :, 2], img[:, :, 2] <= 210))
+    denominator = np.square(r + g + b)
+    prob = np.logical_and.reduce((
+        np.divide(r, g) > 1.130,
+        np.divide(np.multiply(r, b), denominator) > 0.107,
+        np.divide(np.multiply(r, g), denominator) > 0.112,
+    ))
+
+    # TODO Create more steps between zero and ones
+    prob = 255 * prob.astype(dtype=np.uint8)
+    debug_image('Mask', prob)
     prob = prob.astype(dtype=np.float)
     return prob
 
@@ -239,81 +251,92 @@ def fuse_saliency_maps(map1, map2):
     return c
 
 
-if __name__ == '__main__':
-    # Get x random image from the set of allowed labels
-    image_files = glob(r'D:\Nutzer\Documents\PycharmProjects\crv\ressource_rgb\*\*\*.jp*g')
-    image = cv2.imread(np.random.choice(image_files))
-    debug_image('Image', image)
-
-    # Transform to other color spaces
-    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-
-    # Color quantization
-    lab = np.round(lab * (N_QUANT / 255)) * (255 / N_QUANT)
-    lab = lab.astype(dtype=np.uint8)
-
-    # Step 1: Segment image using SLIC (k-means clustering in x,y,x,y,luminance)
-    img_rgb = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
-    segments = segmentation.slic(img_rgb, n_segments=N_SLIC, start_label=1, slic_zero=True, enforce_connectivity=True)
-    regions = regionprops(segments)
-    region_centroids = tuple(i.centroid for i in regions)
-    region_areas = tuple(i.area for i in regions)
-    all_distances = all_spatial_distances(segments, region_centroids, lab.shape)
-
-    # Calculate skin color probability for each pixel of the image
-    prob_skin = skin_probability(lab)
-
-    # Step 2: Compute pixel-level saliency map
-    m_e = pixel_saliency(lab, prob_skin, segments, all_distances)
-    debug_image('Pixel-based Saliency M_e', m_e)
-
-    # Step 3: Compute region-level saliency map
-    m_c = region_saliency(prob_skin, segments, all_distances, region_areas)
-    debug_image('Region-based Saliency M_c', m_c)
-
-    # Step 4: Fuse the confidence maps and binarize using Otsu method
-    # m_coarse = fuse_saliency_maps(m_e, m_c)
-    m_coarse = m_e
-    m_coarse = cv2.GaussianBlur(m_coarse, (5, 5), 0)
-    _, thresh_coarse = cv2.threshold(m_coarse, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    debug_image('Coarse Saliency', m_coarse)
-    debug_image('Coarse mask', thresh_coarse)
-    mask = cv2.inRange(thresh_coarse, 1, 255)
-    coarse_foreground = cv2.bitwise_and(lab, lab, mask=mask)
-    coarse_background = cv2.bitwise_and(lab, lab, mask=255 - mask)
-
-    # Step 5: Calculate observation likelihood probability
-    total_occurances_fg, _ = region_color_hist(coarse_foreground)
-    total_occurances_bg, _ = region_color_hist(coarse_background)
-    n_fg = np.count_nonzero(coarse_foreground)
-    n_bg = np.count_nonzero(coarse_background)
+def likelihood_probability(foreground, background):
+    total_occurances_fg, _ = region_color_hist(foreground)
+    total_occurances_bg, _ = region_color_hist(background)
+    n_fg = np.count_nonzero(foreground)
+    n_bg = np.count_nonzero(background)
     p_v_fg = np.zeros(lab.shape[0:2])
     p_v_bg = np.zeros(lab.shape[0:2])
+    for row in range(0, lab.shape[0]):
+        for col in range(0, lab.shape[1]):
+            pixel_color = tuple(lab[row, col])
+            p_v_fg[row, col] = total_occurances_fg[pixel_color] / n_fg
+            p_v_bg[row, col] = total_occurances_bg[pixel_color] / n_bg
 
-    x_max, y_max = lab.shape[0:2]
-    for x in range(0, x_max):
-        for y in range(0, y_max):
-            color = tuple(lab[x, y])
-            p_v_fg[x, y] = total_occurances_fg[color] / n_fg
-            p_v_bg[x, y] = total_occurances_bg[color] / n_bg
+    return p_v_fg, p_v_bg
 
-    # Step 6: Bayesian framework to obtain fine confidence map and binarize using Otsu method
-    m_fine = np.divide(np.multiply(m_coarse, p_v_fg), np.multiply(m_coarse, p_v_fg) + np.multiply(1 - m_coarse, p_v_bg))
-    m_fine = m_fine.astype(dtype=np.uint8)
-    m_fine = cv2.GaussianBlur(m_fine, (5, 5), 0)
-    _, thresh_fine = cv2.threshold(m_fine, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    debug_image('MFINE', m_fine)
 
-    # Final touches to the mask
-    thresh_fine = cv2.morphologyEx(thresh_fine, cv2.MORPH_OPEN, (5, 5))
-    thresh_fine = cv2.morphologyEx(thresh_fine, cv2.MORPH_CLOSE, (7, 7))
-    thresh_fine = cv2.dilate(thresh_fine, (5, 5))
-    mask = cv2.inRange(thresh_fine, 1, 255)
-    fine_foreground = cv2.bitwise_and(image, image, mask=mask)
-    fine_background = cv2.bitwise_and(image, image, mask=255 - mask)
+if __name__ == '__main__':
+    while True:
+        # Get x random image from the set of allowed labels
+        image_files = glob(r'D:\Nutzer\Documents\PycharmProjects\crv\ressource_rgb\*\*\*.jp*g')
+        image_path = np.random.choice(image_files)
+        print(f'Using image: {image_path}')
+        image_path = r'D:\Nutzer\Documents\PycharmProjects\crv\ressource_rgb\Training\25\Subject46_Scene3_rgb1_000427.jpg'
+        image = cv2.imread(image_path)
+        debug_image('Image', image)
 
-    debug_image('Foreground', fine_foreground)
-    debug_image('Background', fine_background)
+        # Transform to other color spaces
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
 
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+        # Color quantization
+        lab = np.round(lab * (N_QUANT / 255)) * (255 / N_QUANT)
+        lab = lab.astype(dtype=np.uint8)
+
+        # Step 1: Segment image using SLIC (k-means clustering in x,y,x,y,luminance)
+        img_rgb = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+        segments = segmentation.slic(img_rgb, n_segments=N_SLIC, start_label=1, slic_zero=True,
+                                     enforce_connectivity=True)
+        regions = regionprops(segments)
+        region_centroids = tuple(i.centroid for i in regions)
+        region_areas = tuple(i.area for i in regions)
+        all_distances = all_spatial_distances(segments, region_centroids, lab.shape)
+
+        # Calculate skin color probability for each pixel of the image
+        prob_skin = skin_probability(image)
+
+        # Step 2: Compute pixel-level saliency map
+        m_e = pixel_saliency(lab, prob_skin, segments, all_distances)
+        debug_image('Pixel-based Saliency M_e', m_e)
+
+        # Step 3: Compute region-level saliency map
+        m_c = region_saliency(prob_skin, segments, all_distances, region_areas)
+        debug_image('Region-based Saliency M_c', m_c)
+
+        # Step 4: Fuse the confidence maps and binarize using Otsu method
+        # m_coarse = fuse_saliency_maps(m_e, m_c)
+        m_coarse = m_e
+        m_coarse = cv2.GaussianBlur(m_coarse, (5, 5), 0)
+        _, thresh_coarse = cv2.threshold(m_coarse, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        debug_image('Coarse Saliency', m_coarse)
+        debug_image('Coarse mask', thresh_coarse)
+        mask = cv2.inRange(thresh_coarse, 1, 255)
+        coarse_foreground = cv2.bitwise_and(lab, lab, mask=mask)
+        coarse_background = cv2.bitwise_and(lab, lab, mask=255 - mask)
+
+        # Step 5: Calculate observation likelihood probability
+        p_v_fg, p_v_bg = likelihood_probability(coarse_foreground, coarse_background)
+
+        # Step 6: Bayesian framework to obtain fine confidence map and binarize using Otsu method
+        m_fine = 255 * np.divide(np.multiply(m_coarse, p_v_fg),
+                                 np.multiply(m_coarse, p_v_fg) + np.multiply(1 - m_coarse, p_v_bg))
+        m_fine = m_fine.astype(dtype=np.uint8)
+        m_fine = cv2.GaussianBlur(m_fine, (5, 5), 0)
+        _, thresh_fine = cv2.threshold(m_fine, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        debug_image('MFINE', m_fine)
+
+        # Final touches to the mask
+        thresh_fine = cv2.morphologyEx(thresh_fine, cv2.MORPH_OPEN, np.ones((FINAL_OPENING_SIZE, FINAL_OPENING_SIZE)))
+        thresh_fine = cv2.morphologyEx(thresh_fine, cv2.MORPH_CLOSE, np.ones((FINAL_CLOSING_SIZE, FINAL_CLOSING_SIZE)))
+
+        # Apply the mask
+        mask = cv2.inRange(thresh_fine, 1, 255)
+        fine_foreground = cv2.bitwise_and(image, image, mask=mask)
+        fine_background = cv2.bitwise_and(image, image, mask=255 - mask)
+
+        debug_image('Foreground', fine_foreground)
+        debug_image('Background', fine_background)
+
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
