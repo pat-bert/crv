@@ -355,4 +355,4 @@ def preprocess(image_path, overwrite=False):
 if __name__ == '__main__':
     # Get all image file paths in one of the source folders
     image_files = glob(r'D:\Nutzer\Documents\PycharmProjects\crv\ressource_rgb\*\*\*.jp*g')
-    p_map(preprocess, image_files)
+    p_map(preprocess, image_files, num_cpus=os.cpu_count() - 1)
