@@ -13,8 +13,6 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
-
-
 r = []
 #################################################################
 tf.test.is_gpu_available()
@@ -31,7 +29,7 @@ if not os.path.exists("./Felix_ressource/"):
 
 train_path = './Felix_ressource/Training'
 valid_path = './Felix_ressource/Validation'
-test_path = './Felix_ressource/Training'    # Muss nachher wieder durch Test ersetzt werden
+test_path = './Felix_ressource/Training'  # Muss nachher wieder durch Test ersetzt werden
 
 # useful for getting number of files
 image_files = glob(train_path + '/*/*.jp*g')
@@ -136,21 +134,6 @@ print(labels)
 NASNetMobile_callback = tf.keras.callbacks.ModelCheckpoint(filepath="Mobilenet_Model_Checkpoint{epoch:04d}.ckpt",
                                                            save_weights_only=True, verbose=1)
 callbacks = [NASNetMobile_callback]
-
-if os.path.exists("./bottoken.txt"):
-    with open("./bottoken.txt", "r") as f:
-        line = f.readline()
-
-    telegram_token = line.strip()  # replace TOKEN with your bot's token
-
-    #  user id is optional, however highly recommended as it limits the access to you alone.
-    telegram_user_id = None  # replace None with your telegram user id (integer):
-
-    # Create a DLBot instance
- #   bot = DLBot(token=telegram_token, user_id=telegram_user_id)
-    # Create a TelegramBotCallback instance
-  #  telegram_callback = TelegramBotCallback(bot)
-  #  callbacks.append(telegram_callback)
 
 r = model.fit(
     x=train_generator,
