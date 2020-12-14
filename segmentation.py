@@ -31,14 +31,14 @@ def skin_probability(img):
     denominator = np.square(r + g + b)
     np.seterr(divide='ignore', invalid='ignore')
     prob = np.logical_and.reduce((
-        np.divide(r, g) > 1.130,
-        np.divide(np.multiply(r, b), denominator) > 0.107,
-        np.divide(np.multiply(r, g), denominator) > 0.112,
+        np.divide(r, g) > 1.030,
+        np.divide(np.multiply(r, b), denominator) > 0.100,
+        np.divide(np.multiply(r, g), denominator) > 0.100,
     ))
 
     # TODO Create more steps between zero and ones
-    prob = 255 * prob.astype(dtype=np.uint8)
-    debug_image('Mask', prob)
+    prob2 = 255 * prob.astype(dtype=np.uint8)
+    debug_image('Mask', prob2)
     prob = prob.astype(dtype=np.float)
     return prob
 
@@ -278,7 +278,7 @@ def preprocess(image_path, overwrite=False):
         print(f'Using image: {image_path}')
     image = cv2.imread(image_path)
     debug_image('Image', image)
-    new_filepath = Path(image_path.replace('ressource_rgb', 'ressource_slic'))
+    new_filepath = Path(image_path.replace('Felix_ressource', 'Felix_ressource_slic'))
     new_filepath.parent.mkdir(parents=True, exist_ok=True)
 
     if os.path.exists(str(new_filepath)) and not overwrite:
@@ -354,5 +354,6 @@ def preprocess(image_path, overwrite=False):
 
 if __name__ == '__main__':
     # Get all image file paths in one of the source folders
-    image_files = glob(r'D:\Nutzer\Documents\PycharmProjects\crv\ressource_rgb\*\*\*.jp*g')
+    image_files = glob(r'C:\Users\Lenovo\Documents\03_Hochschule\02_Master\02_Semester_WS_2020_2021\02_Computer_and_Robot_Vision\Github\Felix_ressource\Test\27\IMG284.jp*g')
+    #image_files = glob(r'C:\Users\Lenovo\Documents\03_Hochschule\02_Master\02_Semester_WS_2020_2021\02_Computer_and_Robot_Vision\Github\Felix_ressource\*\*\*.jp*g')
     p_map(preprocess, image_files, num_cpus=os.cpu_count() - 1)
