@@ -7,12 +7,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.applications import NASNetMobile
-from tensorflow.keras.layers import Dense, Flatten, Dropout, MaxPooling2D, Input
+from tensorflow.keras.applications.nasnet import preprocess_input
+from tensorflow.keras.layers import Dense, Flatten, Dropout, Input, AveragePooling2D
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.applications.nasnet import preprocess_input
 
 r = []
 #################################################################
@@ -28,9 +28,9 @@ if not os.path.exists("./ressource/"):
     zip_ref.extractall("./data/")
     zip_ref.close()
 
-train_path = './ressource_rgb/Training'
-valid_path = './ressource_rgb/Validation'
-test_path = './ressource_rgb/Test'
+train_path = './Felix_ressource_segmented/Training'
+valid_path = './Felix_ressource_segmented/Validation'
+test_path = './Felix_ressource_segmented/Test'
 
 # useful for getting number of files
 image_files = glob(train_path + '/*/*.jp*g')
@@ -46,7 +46,7 @@ plt.imshow(image.load_img(np.random.choice(image_files)))
 
 #########################################################
 # Define Hyper parameters
-INIT_LR = 1e-3
+INIT_LR = 1e-4
 epochs = 50
 batch_size = 64
 # Define pre-build NASNet_Mobile Network or Mobilenet_V2
@@ -68,16 +68,17 @@ datagen_train = ImageDataGenerator(
     preprocessing_function=preprocess_input)
 
 datagen_valid = ImageDataGenerator(
-    #rescale=1. / 255,
+    # rescale=1. / 255,
     fill_mode="nearest",
     preprocessing_function=preprocess_input)
 
 datagen_test = ImageDataGenerator(
-    #rescale=1. / 255,
+    # rescale=1. / 255,
     fill_mode="nearest",
     preprocessing_function=preprocess_input)
 ##########################################
 
+title = 'Own Dataset'
 
 Pretrained_Model = NASNetMobile(input_tensor=Input(shape=IMAGE_Size + (3,)), weights='imagenet', include_top=False)
 ##########################################################
@@ -86,19 +87,20 @@ Pretrained_Model.trainable = False
 
 # our added layers - you can add more if you want
 layer1 = Pretrained_Model.output
-layer1 = MaxPooling2D(pool_size=(7, 7))(layer1)
+# Pooling layer
+layer1 = AveragePooling2D(pool_size=2)(layer1)
 layer1 = Flatten(name="flatten")(layer1)
+# Dense layers with dropout
 layer1 = Dense(128, activation="relu")(layer1)
 layer1 = Dropout(0.5)(layer1)
 layer1 = Dense(64, activation="relu")(layer1)
 layer1 = Dropout(0.5)(layer1)
-prediction = Dense(len(folders), activation="sigmoid")(layer1)
+prediction = Dense(len(folders), activation="softmax")(layer1)
 
 # create a model object
 model = Model(inputs=Pretrained_Model.input, outputs=prediction)
-
-#   structure of the Model
 model.summary()
+
 # tell the model what cost and optimization method to use
 opt = Adam(lr=INIT_LR, decay=INIT_LR / epochs)
 model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
@@ -136,7 +138,6 @@ print(labels)
 # Start Training
 NASNetMobile_callback = tf.keras.callbacks.ModelCheckpoint(filepath="Mobilenet_Model_Checkpoint{epoch:04d}.ckpt",
                                                            save_weights_only=True, verbose=1)
-callbacks = [NASNetMobile_callback]
 
 r = model.fit(
     x=train_generator,
@@ -146,15 +147,15 @@ r = model.fit(
     steps_per_epoch=len(image_files) // batch_size,
     validation_steps=len(valid_image_files) // batch_size,
     verbose=1,
-    callbacks=callbacks,
+    callbacks=[NASNetMobile_callback],
     use_multiprocessing=False
 )
 
 # saving the NASNet model
 # saving the model
 # save_dir = "/results/"
-model_name = 'Model.h5'
-weights_name = 'weights.h5'
+model_name = f'Model_{title}.h5'
+weights_name = f'weights_{title}.h5'
 model.save(model_name)
 model.save_weights(weights_name)
 print('Saved trained model at %s ' % model_name)
@@ -170,6 +171,7 @@ plt.plot(r.history['val_loss'], label='val loss')
 plt.legend()
 plt.ylim(bottom=0.0)
 plt.grid()
+plt.title(title)
 plt.show()
 
 plt.figure()
@@ -178,6 +180,7 @@ plt.plot(r.history['val_accuracy'], label='val accuracy')
 plt.legend()
 plt.ylim((0.0, 1.0))
 plt.grid()
+plt.title(title)
 plt.show()
 
 ################################
