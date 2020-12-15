@@ -7,13 +7,14 @@ from typing import Optional
 
 import cv2
 import numpy as np
-from skimage import segmentation
-from skimage.measure import regionprops
 from p_tqdm import p_map
-
+from skimage import segmentation, img_as_ubyte
+from skimage.measure import regionprops
 # Algorithm parameters
+from skimage.segmentation import mark_boundaries
+
 N_QUANT = 14  # LAB color quantization levels
-N_SLIC = 120  # Number of target superpixels for SLIC
+N_SLIC = 150  # Number of target superpixels for SLIC
 FINAL_OPENING_SIZE = 7  # Opening of the final mask
 FINAL_CLOSING_SIZE = 11  # Closing of the final mask
 
@@ -27,7 +28,6 @@ def debug_image(title, img):
 
 def skin_probability(img):
     b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
-    # prob = np.logical_and.reduce((118 <= img[:, :, 1], img[:, :, 1] <= 165, 118 <= img[:, :, 2], img[:, :, 2] <= 210))
     denominator = np.square(r + g + b)
     np.seterr(divide='ignore', invalid='ignore')
     prob = np.logical_and.reduce((
@@ -36,10 +36,12 @@ def skin_probability(img):
         np.divide(np.multiply(r, g), denominator) > 0.100,
     ))
 
-    # TODO Create more steps between zero and ones
-    prob2 = 255 * prob.astype(dtype=np.uint8)
-    debug_image('Mask', prob2)
-    prob = prob.astype(dtype=np.float)
+    # Make printable
+    if DEBUG:
+        prob = 255 * prob.astype(dtype=np.uint8)
+        prob = prob.astype(dtype=np.float)
+        debug_image('Skin Color Probability', prob)
+
     return prob
 
 
@@ -190,7 +192,7 @@ def color_entropy(total_occurences, region_occurences, distances):
     return entropy
 
 
-def pixel_saliency(img, p_skin, labels, distances, sigma: Optional[float] = 0.3):
+def pixel_saliency(img, p_skin, labels, distances, sigma: Optional[float] = 0.7):
     """
     Calculate x region-level saliency for an image segmented into superpixels
     Idea:
@@ -227,8 +229,7 @@ def pixel_saliency(img, p_skin, labels, distances, sigma: Optional[float] = 0.3)
     m_saliency = np.exp(-entropy_by_pixel_n / sigma)
     saliency = np.multiply(p_skin, np.sqrt(m_saliency))
     # Normalize to [0,255]
-    saliency = saliency * 255 / np.amax(saliency)
-    saliency = saliency.astype(dtype=np.uint8)
+    saliency = (saliency * 255 / np.amax(saliency)).astype(dtype=np.uint8)
     return saliency
 
 
@@ -273,31 +274,29 @@ def likelihood_probability(lab, foreground, background):
     return p_v_fg, p_v_bg
 
 
-def preprocess(image_path, overwrite=False):
-    if DEBUG:
-        print(f'Using image: {image_path}')
-    image = cv2.imread(image_path)
-    debug_image('Image', image)
-    new_filepath = Path(image_path.replace('Felix_ressource', 'Felix_ressource_slic'))
-    new_filepath.parent.mkdir(parents=True, exist_ok=True)
-
-    if os.path.exists(str(new_filepath)) and not overwrite:
-        return
-
+def segment_image(image):
     # Transform to other color spaces
     lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
 
     # Color quantization
-    lab = np.round(lab * (N_QUANT / 255)) * (255 / N_QUANT)
+    lab = np.round(lab * ((N_QUANT - 1) / 255)) * (255 // (N_QUANT - 1))
     lab = lab.astype(dtype=np.uint8)
+    debug_image('Quantized LAB', lab)
+
+    image_q = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
     # Step 1: Segment image using SLIC (k-means clustering in x,y,x,y,luminance)
     img_rgb = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
     segments = segmentation.slic(img_rgb, n_segments=N_SLIC, start_label=1, slic_zero=True,
                                  enforce_connectivity=True)
+
+    if DEBUG:
+        out = img_as_ubyte(mark_boundaries(img_rgb.copy(), segments))
+        img_segmented = cv2.cvtColor(out, cv2.COLOR_RGB2BGR)
+        debug_image('SLIC', img_segmented)
+
     regions = regionprops(segments)
     region_centroids = tuple(i.centroid for i in regions)
-    region_areas = tuple(i.area for i in regions)
     all_distances = all_spatial_distances(segments, region_centroids, lab.shape)
 
     # Calculate skin color probability for each pixel of the image
@@ -308,15 +307,16 @@ def preprocess(image_path, overwrite=False):
     debug_image('Pixel-based Saliency M_e', m_e)
 
     # Step 3: Compute region-level saliency map
-    m_c = region_saliency(prob_skin, segments, all_distances, region_areas)
-    debug_image('Region-based Saliency M_c', m_c)
+    # region_areas = tuple(i.area for i in regions)
+    # m_c = region_saliency(prob_skin, segments, all_distances, region_areas)
+    # debug_image('Region-based Saliency M_c', m_c)
 
     # Step 4: Fuse the confidence maps and binarize using Otsu method
     m_coarse = m_e
     # m_coarse = fuse_saliency_maps(m_e, m_c)
     m_coarse = cv2.GaussianBlur(m_coarse, (5, 5), 0)
     _, thresh_coarse = cv2.threshold(m_coarse, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    debug_image('Coarse Saliency', m_coarse)
+    # debug_image('Coarse Saliency', m_coarse)
     debug_image('Coarse mask', thresh_coarse)
     mask = cv2.inRange(thresh_coarse, 1, 255)
     coarse_foreground = cv2.bitwise_and(lab, lab, mask=mask)
@@ -332,10 +332,12 @@ def preprocess(image_path, overwrite=False):
     m_fine = cv2.GaussianBlur(m_fine, (5, 5), 0)
     _, thresh_fine = cv2.threshold(m_fine, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     debug_image('MFINE', m_fine)
+    debug_image('Fine mask', thresh_fine)
 
     # Final touches to the mask
     thresh_fine = cv2.morphologyEx(thresh_fine, cv2.MORPH_OPEN, np.ones((FINAL_OPENING_SIZE, FINAL_OPENING_SIZE)))
     thresh_fine = cv2.morphologyEx(thresh_fine, cv2.MORPH_CLOSE, np.ones((FINAL_CLOSING_SIZE, FINAL_CLOSING_SIZE)))
+    debug_image('Fine mask (morphed)', thresh_fine)
 
     # Apply the mask
     mask = cv2.inRange(thresh_fine, 1, 255)
@@ -345,15 +347,33 @@ def preprocess(image_path, overwrite=False):
     debug_image('Foreground', fine_foreground)
     debug_image('Background', fine_background)
 
+    return fine_foreground
+
+
+def preprocess(image_path, overwrite=False):
+    if DEBUG:
+        print(f'Using image: {image_path}')
+    image = cv2.imread(image_path)
+    debug_image('Image', image)
+    new_filepath = Path(image_path.replace('Felix_ressource', 'Felix_ressource_segmented'))
+    new_filepath.parent.mkdir(parents=True, exist_ok=True)
+
+    if os.path.exists(str(new_filepath)) and not overwrite and not DEBUG:
+        return
+
+    fine_foreground = segment_image(image)
+
     if DEBUG:
         cv2.waitKey(0)
         cv2.destroyAllWindows()
-
-    cv2.imwrite(str(new_filepath), fine_foreground)
+    else:
+        cv2.imwrite(str(new_filepath), fine_foreground)
 
 
 if __name__ == '__main__':
     # Get all image file paths in one of the source folders
-    image_files = glob(r'C:\Users\Lenovo\Documents\03_Hochschule\02_Master\02_Semester_WS_2020_2021\02_Computer_and_Robot_Vision\Github\Felix_ressource\Test\27\IMG284.jp*g')
-    #image_files = glob(r'C:\Users\Lenovo\Documents\03_Hochschule\02_Master\02_Semester_WS_2020_2021\02_Computer_and_Robot_Vision\Github\Felix_ressource\*\*\*.jp*g')
+    image_files = glob(r'D:\Nutzer\Documents\PycharmProjects\crv\Felix_ressource\*\*\*.jp*g')
     p_map(preprocess, image_files, num_cpus=os.cpu_count() - 1)
+    # preprocess(r'D:\Nutzer\Documents\PycharmProjects\crv\Felix_ressource\Training\29\IMG35.jpg')
+    # preprocess(r'D:\Nutzer\Documents\PycharmProjects\crv\ressource_rgb\Validation\28\Subject29_Scene2_rgb4_001346.jpg')
+    # preprocess(np.random.choice(image_files))
