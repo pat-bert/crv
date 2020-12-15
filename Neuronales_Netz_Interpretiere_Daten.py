@@ -111,21 +111,22 @@ for k, v in test_generator.class_indices.items():
 
 print(labels)
 
-for test in test_generator:
-    predict = Neuronalesnetzwerk.predict(test)
-    #print(test[0][0])
-    #print(predict[0])
-    for i in range(len(test[0])):
-        plt.imshow(test[0][i])
-        plt.title("Solllabel: " + str(np.round(test[1][i], 2)) + "\nPrediction: " + str(np.round(predict[i], 2)))
-        plt.show()
-        plt.waitforbuttonpress()
+# for test in test_generator:
+#     predict = Neuronalesnetzwerk.predict(test)
+#     #print(test[0][0])
+#     #print(predict[0])
+#     for i in range(len(test[0])):
+#         plt.imshow(test[0][i])
+#         plt.title("Solllabel: " + str(np.round(test[1][i], 2)) + "\nPrediction: " + str(np.round(predict[i], 2)))
+#         plt.show()
+#         plt.waitforbuttonpress()
 
-# rgb_frame, gray_frame = IO_Basic.capture_webcam()
-# rgb_resize = cv2.resize(rgb_frame, IMAGE_Size)
-# test = tf.keras.applications.nasnet.preprocess_input(np.expand_dims(rgb_resize, axis=0))
-# predict = Neuronalesnetzwerk.predict(test)
-# plt.imshow(test)
-# plt.title("Prediction: " + str(np.round(predict, 2)))
-# plt.show()
-# plt.waitforbuttonpress()
+rgb_frame, gray_frame = IO_Basic.capture_webcam()
+rgb_resize = cv2.resize(rgb_frame, IMAGE_Size)
+test = tf.keras.applications.nasnet.preprocess_input(rgb_resize)
+test = np.expand_dims(test, axis=0)
+predict = Neuronalesnetzwerk.predict(test)
+plt.imshow(test)
+plt.title("Prediction: " + str(np.round(predict, 2)))
+plt.show()
+plt.waitforbuttonpress()
