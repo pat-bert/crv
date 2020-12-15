@@ -322,14 +322,22 @@ def segment_image(image):
     coarse_foreground = cv2.bitwise_and(lab, lab, mask=mask)
     coarse_background = cv2.bitwise_and(lab, lab, mask=255 - mask)
 
-    # Step 5: Calculate observation likelihood probability
-    p_v_fg, p_v_bg = likelihood_probability(lab, coarse_foreground, coarse_background)
+    count_foreground = np.count_nonzero(coarse_foreground)
+    count_background = np.count_nonzero(coarse_background)
 
-    # Step 6: Bayesian framework to obtain fine confidence map and binarize using Otsu method
-    m_fine = 255 * np.divide(np.multiply(m_coarse, p_v_fg),
-                             np.multiply(m_coarse, p_v_fg) + np.multiply(1 - m_coarse, p_v_bg))
-    m_fine = m_fine.astype(dtype=np.uint8)
+    m_fine = m_coarse
+
+    if count_foreground and count_background:
+        # Step 5: Calculate observation likelihood probability
+        p_v_fg, p_v_bg = likelihood_probability(lab, coarse_foreground, coarse_background)
+
+        # Step 6: Bayesian framework to obtain fine confidence map and binarize using Otsu method
+        m_fine = 255 * np.divide(np.multiply(m_coarse, p_v_fg),
+                                 np.multiply(m_coarse, p_v_fg) + np.multiply(1 - m_coarse, p_v_bg))
+        m_fine = m_fine.astype(dtype=np.uint8)
+
     m_fine = cv2.GaussianBlur(m_fine, (5, 5), 0)
+
     _, thresh_fine = cv2.threshold(m_fine, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     debug_image('MFINE', m_fine)
     debug_image('Fine mask', thresh_fine)

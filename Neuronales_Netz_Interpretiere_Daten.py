@@ -3,14 +3,16 @@ from glob import glob
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
+import tensorflow as tf
 from tensorflow.keras.applications import NASNetMobile
 from tensorflow.keras.applications.nasnet import preprocess_input
 from tensorflow.keras.layers import Dense, Flatten, Dropout, Input, AveragePooling2D
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
+import keyboard as key
 from segmentation import segment_image
-import tensorflow as tf
+import IO_Basic as io
 
 WEIGHT_PATH = './output/weights_felix.h5'
 IMAGE_PATH = './ressource_slic_korrekte/Validation'
@@ -54,6 +56,19 @@ def build_network(folder_number=FOLDER_LENGTH, image_size=IMAGE_SIZE):
     model.load_weights(WEIGHT_PATH)
 
     return model
+
+def load_model_weights_and_build_network(Model_Pfad = './output/Model_Own Dataset.h5',  Weights_Pfad = './output/weights_felix.h5' ):
+    #init_lr = 1e-4
+    #epochs = 10
+    #opt = Adam(lr=init_lr, decay=init_lr / epochs)
+    model = tf.keras.models.load_model(Model_Pfad)
+    model.summary()
+    #model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
+
+    # Gewichte Laden
+    model.load_weights(Weights_Pfad)
+    return model
+
 
 
 def test(image_path=IMAGE_PATH, image_size=IMAGE_SIZE):
@@ -109,10 +124,16 @@ def predict_webcam():
 
 
 if __name__ == '__main__':
+    model = load_model_weights_and_build_network()
+    webcam = io.capture_webcam_open(0)
+    #model = build_network()
 
-    model = build_network()
-    while True:
-        img0 = predict_webcam()
+    no_exit = True;
+    while no_exit:
+        #img0 = predict_webcam()
+        img0, img_gray = io.capture_webcam_multi_frame(webcam)
+        #cv2.imshow('Bild', img0)
+        #cv2.waitKey()
         img1 = segment_image(img0)
         #cv2.imshow('Segmentiertes Bild', img1)
         #cv2.waitKey()
@@ -125,84 +146,31 @@ if __name__ == '__main__':
         # image_to_detect = preprocess_input(image_to_detect)
         image_to_detect = np.expand_dims(image_to_detect, axis=0)
         detection = model.predict(image_to_detect)
+        value = np.amax(detection)
         font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(img1, str(np.argmax(detection)), (0, 200), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
+        if value >= 0.65:
+            cv2.putText(img1, str(np.argmax(detection)), (0, 200), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
+        else:
+            cv2.putText(img1, "ND", (0, 200), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
         img2 = np.hstack([img0, img1])
+        cv2.namedWindow("Prediction")
+        cv2.moveWindow("Prediction", 0,0)
         cv2.imshow('Prediction', img2)
         print(str(detection))
-        cv2.waitKey()
+
+        while True:
+            try:
+                keys = key.read_key()
+            except:
+                #print("")
+                keys = None
+                # do nothing!
+            if keys == 'q':
+                print("We will Leave the Loop!")
+                no_exit = False
+                break
+            elif keys == 'enter':
+                break
+
         cv2.destroyAllWindows()
-        #Prediction of the Image
-
-
-
-# # Alt vor dem Merge
-# #################################################################
-# # Load Data
-# # Check if folder exists
-# # create data folder if not existing and extract data into it.
-# if not os.path.exists("./ressource"):
-#     os.makedirs("./ressource")
-#
-# # if not os.path.exists("./ressource/"):
-# #     zip_ref = zipfile.ZipFile("Gesture_img.zip", 'r')
-# #     zip_ref.extractall("./data/")
-# #     zip_ref.close()
-#
-# test_path = './ressource/Test'
-#
-# # useful for getting number of files
-# test_image_files = glob(test_path + '/*/*.jp*g')
-#
-# # useful for getting number of classes
-# folders = glob(test_path + '/*')
-#
-# #Aufruf des Neuronalennetzwerk
-# Neuronalesnetzwerk = build_network(len(folders))
-#
-# #Define Batch_Size and Image Size
-# batch_size = 64
-# IMAGE_Size = (224, 224)
-#
-# ##########################################################
-# # Image generator
-# # image preprocessing and data augmentation during training
-# datagen_test = ImageDataGenerator(
-#     rescale=1. / 255,
-#     fill_mode="nearest")
-#
-# #########################
-# # Call Generators
-# test_generator = datagen_test.flow_from_directory(
-#     test_path,
-#     target_size=IMAGE_Size,
-#     shuffle=True,
-#     batch_size=batch_size,
-# )
-#
-# # Print all Labels
-# labels = [None] * len(test_generator.class_indices)
-# for k, v in test_generator.class_indices.items():
-#     labels[v] = k
-#
-# print(labels)
-#
-# # for test in test_generator:
-# #     predict = Neuronalesnetzwerk.predict(test)
-# #     #print(test[0][0])
-# #     #print(predict[0])
-# #     for i in range(len(test[0])):
-# #         plt.imshow(test[0][i])
-# #         plt.title("Solllabel: " + str(np.round(test[1][i], 2)) + "\nPrediction: " + str(np.round(predict[i], 2)))
-# #         plt.show()
-# #         plt.waitforbuttonpress()
-#
-# rgb_frame, gray_frame = IO_Basic.capture_webcam()
-# rgb_resize = cv2.resize(rgb_frame, IMAGE_Size)
-# test = tf.keras.applications.nasnet.preprocess_input(rgb_resize)
-# test = np.expand_dims(test, axis=0)
-# predict = Neuronalesnetzwerk.predict(test)
-# plt.imshow(test)
-# plt.title("Prediction: " + str(np.round(predict, 2)))
-# plt.show()
-# plt.waitforbuttonpress()
+    io.capture_webcam_close(webcam)
