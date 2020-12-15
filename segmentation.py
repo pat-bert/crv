@@ -16,7 +16,7 @@ from skimage.segmentation import mark_boundaries
 N_QUANT = 14  # LAB color quantization levels
 N_SLIC = 150  # Number of target superpixels for SLIC
 FINAL_OPENING_SIZE = 7  # Opening of the final mask
-FINAL_CLOSING_SIZE = 11  # Closing of the final mask
+FINAL_CLOSING_SIZE = 9  # Closing of the final mask
 
 DEBUG = False
 
