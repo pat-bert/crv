@@ -125,8 +125,12 @@ if __name__ == '__main__':
         # image_to_detect = preprocess_input(image_to_detect)
         image_to_detect = np.expand_dims(image_to_detect, axis=0)
         detection = model.predict(image_to_detect)
+        value = np.amax(detection)
         font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(img1, str(np.argmax(detection)), (0, 200), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
+        if value >= 0.65:
+            cv2.putText(img1, str(np.argmax(detection)), (0, 200), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
+        else:
+            cv2.putText(img1, "ND", (0, 200), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
         img2 = np.hstack([img0, img1])
         cv2.imshow('Prediction', img2)
         print(str(detection))
