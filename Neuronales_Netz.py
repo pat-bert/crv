@@ -8,12 +8,11 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.applications import NASNetMobile
 from tensorflow.keras.applications.nasnet import preprocess_input
-from tensorflow.keras.layers import Dense, Flatten, Dropout, Input
+from tensorflow.keras.layers import Dense, Flatten, Dropout, Input, AveragePooling2D
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.python.keras.layers import AveragePooling2D
 
 r = []
 #################################################################
@@ -29,9 +28,9 @@ if not os.path.exists("./ressource/"):
     zip_ref.extractall("./data/")
     zip_ref.close()
 
-train_path = './ressource_slic_korrekte/Training'
-valid_path = './ressource_slic_korrekte/Validation'
-test_path = './ressource_slic_korrekte/Test'
+train_path = './Felix_ressource_segmented/Training'
+valid_path = './Felix_ressource_segmented/Validation'
+test_path = './Felix_ressource_segmented/Test'
 
 # useful for getting number of files
 image_files = glob(train_path + '/*/*.jp*g')
@@ -48,7 +47,7 @@ plt.imshow(image.load_img(np.random.choice(image_files)))
 #########################################################
 # Define Hyper parameters
 INIT_LR = 1e-4
-epochs = 30
+epochs = 50
 batch_size = 64
 # Define pre-build NASNet_Mobile Network or Mobilenet_V2
 IMAGE_Size = (224, 224)
@@ -79,170 +78,167 @@ datagen_test = ImageDataGenerator(
     preprocessing_function=preprocess_input)
 ##########################################
 
-for experiment_count in range(0, 1):
-    title = 'Average Pooling'
-    Pretrained_Model = NASNetMobile(input_tensor=Input(shape=IMAGE_Size + (3,)), weights='imagenet', include_top=False)
-    ##########################################################
-    # don't train existing weights
-    Pretrained_Model.trainable = False
+title = 'Own Dataset'
 
-    # our added layers - you can add more if you want
-    layer1 = Pretrained_Model.output
-    # Pooling layer
-    layer1 = AveragePooling2D()(layer1)
-    layer1 = Flatten(name="flatten")(layer1)
-    # Dense layers with dropout
-    layer1 = Dense(128, activation="relu")(layer1)
-    layer1 = Dropout(0.5)(layer1)
-    layer1 = Dense(64, activation="relu")(layer1)
-    layer1 = Dropout(0.5)(layer1)
-    prediction = Dense(len(folders), activation="softmax")(layer1)
+Pretrained_Model = NASNetMobile(input_tensor=Input(shape=IMAGE_Size + (3,)), weights='imagenet', include_top=False)
+##########################################################
+# don't train existing weights
+Pretrained_Model.trainable = False
 
-    # create a model object
-    model = Model(inputs=Pretrained_Model.input, outputs=prediction)
-    model.summary()
+# our added layers - you can add more if you want
+layer1 = Pretrained_Model.output
+# Pooling layer
+layer1 = AveragePooling2D(pool_size=2)(layer1)
+layer1 = Flatten(name="flatten")(layer1)
+# Dense layers with dropout
+layer1 = Dense(128, activation="relu")(layer1)
+layer1 = Dropout(0.5)(layer1)
+layer1 = Dense(64, activation="relu")(layer1)
+layer1 = Dropout(0.5)(layer1)
+prediction = Dense(len(folders), activation="softmax")(layer1)
 
-    # tell the model what cost and optimization method to use
-    opt = Adam(lr=INIT_LR, decay=INIT_LR / epochs)
-    model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
-    # model.load_weights('./output/weights.h5')
+# create a model object
+model = Model(inputs=Pretrained_Model.input, outputs=prediction)
+model.summary()
 
-    #########################
-    # Call Generators
-    train_generator = datagen_train.flow_from_directory(
-        train_path,
-        target_size=IMAGE_Size,
-        shuffle=True,
-        batch_size=batch_size,
-    )
+# tell the model what cost and optimization method to use
+opt = Adam(lr=INIT_LR, decay=INIT_LR / epochs)
+model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
+# model.load_weights('./output/weights.h5')
 
-    validation_generator = datagen_valid.flow_from_directory(
-        valid_path,
-        target_size=IMAGE_Size,
-        shuffle=True,
-        batch_size=batch_size,
-    )
+#########################
+# Call Generators
+train_generator = datagen_train.flow_from_directory(
+    train_path,
+    target_size=IMAGE_Size,
+    shuffle=True,
+    batch_size=batch_size,
+)
 
-    test_generator = datagen_test.flow_from_directory(
-        test_path,
-        target_size=IMAGE_Size,
-        shuffle=True,
-        batch_size=batch_size,
-    )
-    # Print all Labels
-    labels = [None] * len(train_generator.class_indices)
-    for k, v in train_generator.class_indices.items():
-        labels[v] = k
+validation_generator = datagen_valid.flow_from_directory(
+    valid_path,
+    target_size=IMAGE_Size,
+    shuffle=True,
+    batch_size=batch_size,
+)
 
-    print(labels)
+test_generator = datagen_test.flow_from_directory(
+    test_path,
+    target_size=IMAGE_Size,
+    shuffle=True,
+    batch_size=batch_size,
+)
+# Print all Labels
+labels = [None] * len(train_generator.class_indices)
+for k, v in train_generator.class_indices.items():
+    labels[v] = k
 
-    # Start Training
-    NASNetMobile_callback = tf.keras.callbacks.ModelCheckpoint(filepath="Mobilenet_Model_Checkpoint{epoch:04d}.ckpt",
-                                                               save_weights_only=True, verbose=1)
+print(labels)
 
-    EarlyStopping_callback = tf.keras.callbacks.EarlyStopping(monitor='loss', patience=5, restore_best_weights=True,
-                                                              min_delta=0.2)
+# Start Training
+NASNetMobile_callback = tf.keras.callbacks.ModelCheckpoint(filepath="Mobilenet_Model_Checkpoint{epoch:04d}.ckpt",
+                                                           save_weights_only=True, verbose=1)
 
-    r = model.fit(
-        x=train_generator,
-        validation_data=validation_generator,
-        epochs=epochs,
-        batch_size=batch_size,
-        steps_per_epoch=len(image_files) // batch_size,
-        validation_steps=len(valid_image_files) // batch_size,
-        verbose=1,
-        callbacks=[NASNetMobile_callback, EarlyStopping_callback],
-        use_multiprocessing=False
-    )
+r = model.fit(
+    x=train_generator,
+    validation_data=validation_generator,
+    epochs=epochs,
+    batch_size=batch_size,
+    steps_per_epoch=len(image_files) // batch_size,
+    validation_steps=len(valid_image_files) // batch_size,
+    verbose=1,
+    callbacks=[NASNetMobile_callback],
+    use_multiprocessing=False
+)
 
-    # saving the NASNet model
-    # saving the model
-    # save_dir = "/results/"
-    model_name = f'Model_{title}.h5'
-    weights_name = f'weights_{title}.h5'
-    model.save(model_name)
-    model.save_weights(weights_name)
-    print('Saved trained model at %s ' % model_name)
-    print('Saved weights at %s ' % weights_name)
+# saving the NASNet model
+# saving the model
+# save_dir = "/results/"
+model_name = f'Model_{title}.h5'
+weights_name = f'weights_{title}.h5'
+model.save(model_name)
+model.save_weights(weights_name)
+print('Saved trained model at %s ' % model_name)
+print('Saved weights at %s ' % weights_name)
 
-    # Show Accuracity and Loss
-    # plot some data
+# Show Accuracity and Loss
+# plot some data
 
-    # loss
-    plt.figure()
-    plt.plot(r.history['loss'], label='train loss')
-    plt.plot(r.history['val_loss'], label='val loss')
-    plt.legend()
-    plt.ylim(bottom=0.0)
-    plt.grid()
-    plt.title(title)
-    plt.show()
+# loss
+plt.figure()
+plt.plot(r.history['loss'], label='train loss')
+plt.plot(r.history['val_loss'], label='val loss')
+plt.legend()
+plt.ylim(bottom=0.0)
+plt.grid()
+plt.title(title)
+plt.show()
 
-    plt.figure()
-    plt.plot(r.history['accuracy'], label='train accuracy')
-    plt.plot(r.history['val_accuracy'], label='val accuracy')
-    plt.legend()
-    plt.ylim((0.0, 1.0))
-    plt.grid()
-    plt.title(title)
-    plt.show()
+plt.figure()
+plt.plot(r.history['accuracy'], label='train accuracy')
+plt.plot(r.history['val_accuracy'], label='val accuracy')
+plt.legend()
+plt.ylim((0.0, 1.0))
+plt.grid()
+plt.title(title)
+plt.show()
 
-    ################################
-    # # Perform Predictions on 5 Test Images
-    # for i in range(0, 5):
-    #     image_to_detect = (cv2.cvtColor((testX[i]), cv2.COLOR_BGR2RGB))
-    #     # plt.imshow(cv2.cvtColor((PictureX0[i]), cv2.COLOR_BGR2RGB))
-    #     # plt.show()
-    #     image_to_detect = cv2.resize(image_to_detect, (224, 224))
-    #     image_to_detect = preprocess_input(image_to_detect)
-    #     image_to_detect = np.expand_dims(image_to_detect, axis=0)
-    #     (mask, withoutMask) = model.predict(image_to_detect)[0]
-    #
-    #     label = "Mask Correct" if mask > withoutMask else "Mask NOT Correct"
-    #     # Prediction of the Image
-    #     label = "{}: {:.2f}%".format(label, max(mask, withoutMask) * 100)
-    #     plt.imshow(cv2.cvtColor((testX[i]+1)/2, cv2.COLOR_BGR2RGB))
-    #     plt.title("Output: " + label)
-    #     plt.show()
-    # #######################################################
-    # # Prediction on unseen Data
-    # i = 0
-    # for i in range(0, 10):
-    #     img = cv2.imread(os.path.abspath('Unseen_Data/' + str(i) + '.jpg'))
-    #     image_to_detect = cv2.resize(img, (224, 224))
-    #     image_to_detect = preprocess_input(image_to_detect)
-    #     image_to_detect = np.expand_dims(image_to_detect, axis=0)
-    #     (mask, withoutMask) = model.predict(image_to_detect)[0]
-    #
-    #     label = "Mask Correct" if mask > withoutMask else "Mask NOT Correct"
-    #     # Prediction of the Image
-    #     label = "{}: {:.2f}%".format(label, max(mask, withoutMask) * 100)
-    #     plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-    #     plt.title("Output: " + label)
-    #     plt.show()
-    #
-    # #######################################################
-    # # Apply Predictions on Web cam Data
-    # def Webcam():
-    #     webcam = cv2.VideoCapture(0)
-    #     if webcam.isOpened():
-    #         true_, img = webcam.read()
-    #         webcam.release()
-    #         return cv2.resize(img, (224, 224))
-    #     else:
-    #         return cv2.resize(np.zeros((200, 200, 3), np.uint8), (224, 224))
-    #
-    # img1 = Webcam()
-    # # img = np.expand_dims(np.stack(img1, axis=0), axis=0)
-    # image_to_detect = (cv2.cvtColor(img1, cv2.COLOR_BGR2RGB))
-    # image_to_detect = img_to_array(image_to_detect)
-    # image_to_detect = preprocess_input(image_to_detect)
-    # image_to_detect = np.expand_dims(image_to_detect, axis=0)
-    #
-    # # Prediction of the Image
-    # (mask, withoutMask) = model.predict(image_to_detect)[0]
-    # label = "Mask Correct" if mask > withoutMask else "Mask NOT Correct"
-    # label = "{}: {:.2f}%".format(label, max(mask, withoutMask) * 100)
-    # plt.imshow(cv2.cvtColor(img1, cv2.COLOR_BGR2RGB))
-    # plt.title("Output: " + label)
-    # plt.show()
+################################
+# # Perform Predictions on 5 Test Images
+# for i in range(0, 5):
+#     image_to_detect = (cv2.cvtColor((testX[i]), cv2.COLOR_BGR2RGB))
+#     # plt.imshow(cv2.cvtColor((PictureX0[i]), cv2.COLOR_BGR2RGB))
+#     # plt.show()
+#     image_to_detect = cv2.resize(image_to_detect, (224, 224))
+#     image_to_detect = preprocess_input(image_to_detect)
+#     image_to_detect = np.expand_dims(image_to_detect, axis=0)
+#     (mask, withoutMask) = model.predict(image_to_detect)[0]
+#
+#     label = "Mask Correct" if mask > withoutMask else "Mask NOT Correct"
+#     # Prediction of the Image
+#     label = "{}: {:.2f}%".format(label, max(mask, withoutMask) * 100)
+#     plt.imshow(cv2.cvtColor((testX[i]+1)/2, cv2.COLOR_BGR2RGB))
+#     plt.title("Output: " + label)
+#     plt.show()
+# #######################################################
+# # Prediction on unseen Data
+# i = 0
+# for i in range(0, 10):
+#     img = cv2.imread(os.path.abspath('Unseen_Data/' + str(i) + '.jpg'))
+#     image_to_detect = cv2.resize(img, (224, 224))
+#     image_to_detect = preprocess_input(image_to_detect)
+#     image_to_detect = np.expand_dims(image_to_detect, axis=0)
+#     (mask, withoutMask) = model.predict(image_to_detect)[0]
+#
+#     label = "Mask Correct" if mask > withoutMask else "Mask NOT Correct"
+#     # Prediction of the Image
+#     label = "{}: {:.2f}%".format(label, max(mask, withoutMask) * 100)
+#     plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+#     plt.title("Output: " + label)
+#     plt.show()
+#
+# #######################################################
+# # Apply Predictions on Web cam Data
+# def Webcam():
+#     webcam = cv2.VideoCapture(0)
+#     if webcam.isOpened():
+#         true_, img = webcam.read()
+#         webcam.release()
+#         return cv2.resize(img, (224, 224))
+#     else:
+#         return cv2.resize(np.zeros((200, 200, 3), np.uint8), (224, 224))
+#
+# img1 = Webcam()
+# # img = np.expand_dims(np.stack(img1, axis=0), axis=0)
+# image_to_detect = (cv2.cvtColor(img1, cv2.COLOR_BGR2RGB))
+# image_to_detect = img_to_array(image_to_detect)
+# image_to_detect = preprocess_input(image_to_detect)
+# image_to_detect = np.expand_dims(image_to_detect, axis=0)
+#
+# # Prediction of the Image
+# (mask, withoutMask) = model.predict(image_to_detect)[0]
+# label = "Mask Correct" if mask > withoutMask else "Mask NOT Correct"
+# label = "{}: {:.2f}%".format(label, max(mask, withoutMask) * 100)
+# plt.imshow(cv2.cvtColor(img1, cv2.COLOR_BGR2RGB))
+# plt.title("Output: " + label)
+# plt.show()
