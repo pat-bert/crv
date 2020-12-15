@@ -9,8 +9,10 @@ from tensorflow.keras.layers import Dense, Flatten, Dropout, Input, AveragePooli
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from segmentation import segment_image
+import tensorflow as tf
 
-WEIGHT_PATH = './output/weights_Average_Pooling.h5'
+WEIGHT_PATH = './output/weights_felix.h5'
 IMAGE_PATH = './ressource_slic_korrekte/Validation'
 FOLDER_LENGTH = 10
 IMAGE_SIZE = (224, 224)
@@ -107,38 +109,30 @@ def predict_webcam():
 
 
 if __name__ == '__main__':
-    test()
 
-# model = build_network()
-# img1 = predict_webcam()
-# cv2.imshow('test', img1)
-# cv2.waitKey()
-# # img = np.expand_dims(np.stack(img1, axis=0), axis=0)
-# image_to_detect = (cv2.cvtColor(img1, cv2.COLOR_BGR2RGB))
-#
-# image_to_detect = tf.keras.applications.nasnet.preprocess_input(image_to_detect)
-#
-# # image_to_detect = img_to_array(image_to_detect)
-# # image_to_detect = preprocess_input(image_to_detect)
-# image_to_detect = np.expand_dims(image_to_detect, axis=0)
-# detection = model.predict(image_to_detect)
-# cv2.imshow('Prediction', img1)
-# print(str(detection))
-# cv2.waitKey()
-# Prediction of the Image
-# (mask, withoutMask) = model.predict(image_to_detect)[0]
-# label = "Mask Correct" if mask > withoutMask else "Mask NOT Correct"
-# label = "{}: {:.2f}%".format(label, max(mask, withoutMask) * 100)
-# plt.imshow(cv2.cvtColor(img1, cv2.COLOR_BGR2RGB))
-# plt.title("Output: " + label)
-# plt.show()
+    model = build_network()
+    while True:
+        img0 = predict_webcam()
+        img1 = segment_image(img0)
+        #cv2.imshow('Segmentiertes Bild', img1)
+        #cv2.waitKey()
+        # img = np.expand_dims(np.stack(img1, axis=0), axis=0)
+        image_to_detect = (cv2.cvtColor(img1, cv2.COLOR_BGR2RGB))
+
+        image_to_detect = tf.keras.applications.nasnet.preprocess_input(image_to_detect)
+
+        # image_to_detect = img_to_array(image_to_detect)
+        # image_to_detect = preprocess_input(image_to_detect)
+        image_to_detect = np.expand_dims(image_to_detect, axis=0)
+        detection = model.predict(image_to_detect)
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        cv2.putText(img1, str(np.argmax(detection)), (0, 200), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
+        img2 = np.hstack([img0, img1])
+        cv2.imshow('Prediction', img2)
+        print(str(detection))
+        cv2.waitKey()
+        cv2.destroyAllWindows()
+        #Prediction of the Image
 
 
-# rgb_frame, gray_frame = IO_Basic.capture_webcam()
-# rgb_resize = cv2.resize(rgb_frame, IMAGE_Size)
-# test = tf.keras.applications.nasnet.preprocess_input(np.expand_dims(rgb_resize, axis=0))
-# predict = Neuronalesnetzwerk.predict(test)
-# plt.imshow(test)
-# plt.title("Prediction: " + str(np.round(predict, 2)))
-# plt.show()
-# plt.waitforbuttonpress()
+
