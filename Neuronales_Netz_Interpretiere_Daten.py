@@ -10,7 +10,6 @@ from tensorflow.keras.layers import Dense, Flatten, Dropout, Input, AveragePooli
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-import keyboard as key
 from segmentation import segment_image
 import IO_Basic as io
 
@@ -110,19 +109,6 @@ def test(image_path=IMAGE_PATH, image_size=IMAGE_SIZE):
             plt.show()
             # plt.waitforbuttonpress()
 
-
-#######################################################
-# Apply Predictions on Web cam Data
-def predict_webcam():
-    webcam = cv2.VideoCapture(1)
-    if webcam.isOpened():
-        true_, img = webcam.read()
-        webcam.release()
-        return cv2.resize(img, (224, 224))
-    else:
-        return cv2.resize(np.zeros((200, 200, 3), np.uint8), (224, 224))
-
-
 if __name__ == '__main__':
     model = load_model_weights_and_build_network()
     webcam = io.capture_webcam_open(0)
@@ -130,20 +116,17 @@ if __name__ == '__main__':
 
     no_exit = True;
     while no_exit:
-        #img0 = predict_webcam()
         img0, img_gray = io.capture_webcam_multi_frame(webcam)
         #cv2.imshow('Bild', img0)
         #cv2.waitKey()
         img1 = segment_image(img0)
         #cv2.imshow('Segmentiertes Bild', img1)
         #cv2.waitKey()
-        # img = np.expand_dims(np.stack(img1, axis=0), axis=0)
+
         image_to_detect = (cv2.cvtColor(img1, cv2.COLOR_BGR2RGB))
 
         image_to_detect = tf.keras.applications.nasnet.preprocess_input(image_to_detect)
 
-        # image_to_detect = img_to_array(image_to_detect)
-        # image_to_detect = preprocess_input(image_to_detect)
         image_to_detect = np.expand_dims(image_to_detect, axis=0)
         detection = model.predict(image_to_detect)
         value = np.amax(detection)
@@ -154,23 +137,14 @@ if __name__ == '__main__':
             cv2.putText(img1, "ND", (0, 200), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
         img2 = np.hstack([img0, img1])
         cv2.namedWindow("Prediction")
-        cv2.moveWindow("Prediction", 0,0)
+        #cv2.moveWindow("Prediction", 0,0)
         cv2.imshow('Prediction', img2)
+        key = cv2.waitKey()
         print(str(detection))
-
-        while True:
-            try:
-                keys = key.read_key()
-            except:
-                #print("")
-                keys = None
-                # do nothing!
-            if keys == 'q':
-                print("We will Leave the Loop!")
-                no_exit = False
-                break
-            elif keys == 'enter':
-                break
+        #print(key)
+        if key == 113: #Abfrage Taste q
+            print("We will Leave the Loop!")
+            no_exit = False
 
         cv2.destroyAllWindows()
     io.capture_webcam_close(webcam)

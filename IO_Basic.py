@@ -60,11 +60,13 @@ def capture_webcam_multi_frame (cap = None):
         if cap.isOpened():
             ret, rgb_frame = cap.read()
             if ret is False:
+                print("ret is False")
                 rgb_frame = np.zeros((width, height, 3), np.uint8)
         else:
             width = 224
             height = 224
             rgb_frame = np.zeros((width, height, 3), np.uint8)
+            print("Webcam is closed!")
 
     gray_frame = cv2.cvtColor(rgb_frame, cv2.COLOR_BGR2GRAY)
     rgb_frame = cv2.resize(rgb_frame, (224, 224))
