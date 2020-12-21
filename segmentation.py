@@ -229,7 +229,7 @@ def pixel_saliency(img, p_skin, labels, distances, sigma: Optional[float] = 0.7)
     m_saliency = np.exp(-entropy_by_pixel_n / sigma)
     saliency = np.multiply(p_skin, np.sqrt(m_saliency))
     # Normalize to [0,255]
-    saliency = (saliency * 255 / np.amax(saliency)).astype(dtype=np.uint8)
+    saliency = ((saliency - np.amin(saliency)) / np.ptp(saliency) * 255).astype(dtype=np.uint8)
     return saliency
 
 
@@ -283,12 +283,9 @@ def segment_image(image):
     lab = lab.astype(dtype=np.uint8)
     debug_image('Quantized LAB', lab)
 
-    image_q = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
-
     # Step 1: Segment image using SLIC (k-means clustering in x,y,x,y,luminance)
     img_rgb = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
-    segments = segmentation.slic(img_rgb, n_segments=N_SLIC, start_label=1, slic_zero=True,
-                                 enforce_connectivity=True)
+    segments = segmentation.slic(img_rgb, n_segments=N_SLIC, start_label=1, slic_zero=True, enforce_connectivity=True)
 
     if DEBUG:
         out = img_as_ubyte(mark_boundaries(img_rgb.copy(), segments))
@@ -363,7 +360,7 @@ def preprocess(image_path, overwrite=False):
         print(f'Using image: {image_path}')
     image = cv2.imread(image_path)
     debug_image('Image', image)
-    new_filepath = Path(image_path.replace('Felix_ressource', 'Felix_ressource_segmented'))
+    new_filepath = Path(image_path.replace('ressource', 'ressource_segmented'))
     new_filepath.parent.mkdir(parents=True, exist_ok=True)
 
     if os.path.exists(str(new_filepath)) and not overwrite and not DEBUG:

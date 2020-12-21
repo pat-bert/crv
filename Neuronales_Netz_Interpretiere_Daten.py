@@ -10,8 +10,9 @@ from tensorflow.keras.layers import Dense, Flatten, Dropout, Input, AveragePooli
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from segmentation import segment_image
+
 import IO_Basic as io
+from segmentation import segment_image
 
 WEIGHT_PATH = './output/weights_felix.h5'
 IMAGE_PATH = './ressource_slic_korrekte/Validation'
@@ -56,18 +57,13 @@ def build_network(folder_number=FOLDER_LENGTH, image_size=IMAGE_SIZE):
 
     return model
 
-def load_model_weights_and_build_network(Model_Pfad = './output/Model_Own Dataset.h5',  Weights_Pfad = './output/weights_felix.h5' ):
-    #init_lr = 1e-4
-    #epochs = 10
-    #opt = Adam(lr=init_lr, decay=init_lr / epochs)
+
+def load_model_weights_and_build_network(Model_Pfad='./output/Model_Own Dataset.h5',
+                                         Weights_Pfad='./output/weights_felix.h5'):
     model = tf.keras.models.load_model(Model_Pfad)
     model.summary()
-    #model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
-
-    # Gewichte Laden
     model.load_weights(Weights_Pfad)
     return model
-
 
 
 def test(image_path=IMAGE_PATH, image_size=IMAGE_SIZE):
@@ -109,19 +105,20 @@ def test(image_path=IMAGE_PATH, image_size=IMAGE_SIZE):
             plt.show()
             # plt.waitforbuttonpress()
 
+
 if __name__ == '__main__':
     model = load_model_weights_and_build_network()
     webcam = io.capture_webcam_open(0)
-    #model = build_network()
+    # model = build_network()
 
-    no_exit = True;
+    no_exit = True
     while no_exit:
         img0, img_gray = io.capture_webcam_multi_frame(webcam)
-        #cv2.imshow('Bild', img0)
-        #cv2.waitKey()
+        # cv2.imshow('Bild', img0)
+        # cv2.waitKey()
         img1 = segment_image(img0)
-        #cv2.imshow('Segmentiertes Bild', img1)
-        #cv2.waitKey()
+        # cv2.imshow('Segmentiertes Bild', img1)
+        # cv2.waitKey()
 
         image_to_detect = (cv2.cvtColor(img1, cv2.COLOR_BGR2RGB))
 
@@ -137,12 +134,12 @@ if __name__ == '__main__':
             cv2.putText(img1, "ND", (0, 200), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
         img2 = np.hstack([img0, img1])
         cv2.namedWindow("Prediction")
-        #cv2.moveWindow("Prediction", 0,0)
+        # cv2.moveWindow("Prediction", 0,0)
         cv2.imshow('Prediction', img2)
         key = cv2.waitKey()
         print(str(detection))
-        #print(key)
-        if key == 113: #Abfrage Taste q
+        # print(key)
+        if key == 113:  # Abfrage Taste q
             print("We will Leave the Loop!")
             no_exit = False
 

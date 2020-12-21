@@ -125,7 +125,7 @@ validation_generator = datagen_valid.flow_from_directory(
 test_generator = datagen_test.flow_from_directory(
     test_path,
     target_size=IMAGE_Size,
-    shuffle=True,
+    shuffle=False,
     batch_size=batch_size,
 )
 # Print all Labels
