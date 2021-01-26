@@ -18,7 +18,7 @@ N_SLIC = 150  # Number of target superpixels for SLIC
 FINAL_OPENING_SIZE = 7  # Opening of the final mask
 FINAL_CLOSING_SIZE = 9  # Closing of the final mask
 
-DEBUG = False
+DEBUG = True
 
 
 def debug_image(title, img):
@@ -112,7 +112,7 @@ def region_saliency(p_skin, labels, distances, areas, sigma: Optional[float] = 0
         saliency[labels == x] = curr_sal
 
     # Normalize to [0,255]
-    saliency = saliency * 255 / np.amax(saliency)
+    saliency = 255 * (saliency - np.amin(saliency)) / (np.amax(saliency) - np.amin(saliency))
     return saliency.astype(dtype=np.uint8)
 
 
@@ -252,8 +252,11 @@ def fuse_saliency_maps(map1, map2):
     alpha = np.exp(nominator / denominator)
 
     # Combine the maps and apply the bias
+    map1 = map1.astype(np.uint16)
+    map2 = map2.astype(np.uint16)
     root = np.sqrt(np.multiply(map1, map2))
     c = np.multiply(alpha, root)
+    c = 255 * c / np.amax(c)
     c = c.astype(dtype=np.uint8)
     return c
 
@@ -329,6 +332,7 @@ def segment_image(image):
         p_v_fg, p_v_bg = likelihood_probability(lab, coarse_foreground, coarse_background)
 
         # Step 6: Bayesian framework to obtain fine confidence map and binarize using Otsu method
+        m_coarse = m_coarse.astype(np.float64)/255
         m_fine = 255 * np.divide(np.multiply(m_coarse, p_v_fg),
                                  np.multiply(m_coarse, p_v_fg) + np.multiply(1 - m_coarse, p_v_bg))
         m_fine = m_fine.astype(dtype=np.uint8)

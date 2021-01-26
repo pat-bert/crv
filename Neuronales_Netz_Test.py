@@ -18,7 +18,7 @@ if __name__ == '__main__':
     test_gen = ImageDataGenerator(preprocessing_function=preprocess_input)
     test_data = test_gen.flow_from_directory(test_path, target_size=IMAGE_SIZE, batch_size=batch_size, shuffle=False)
 
-    # Confution Matrix and Classification Report
+    # Confusion Matrix and Classification Report
     Y_pred = model.predict(test_data)
     y_pred = np.argmax(Y_pred, axis=1)
     print('Confusion Matrix (True Label as row, predicted label as column)')
@@ -26,7 +26,7 @@ if __name__ == '__main__':
     print(cm)
     print('Classification Report')
     print(classification_report(test_data.classes, y_pred))
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=test_data.class_indices.keys())
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=[str(int(i)-24) for i in test_data.class_indices.keys()])
     disp.plot(include_values=True, cmap=plt.cm.Blues, xticks_rotation='horizontal')
     disp.ax_.set_title("Confusion matrix, without normalization")
     plt.show()
